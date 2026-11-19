@@ -22,7 +22,8 @@ PLAN_BOOLEAN = "boolean"
 PLAN_DATETIME = "datetime"
 PLAN_CATEGORY = "category"
 
-_CURRENCY_NOISE = re.compile(r"(?i)rs\.?|lkr|usd|\$|â‚¬|Â£|%|,|\s")
+# € = euro, £ = pound (escaped so file-encoding mishaps cannot corrupt the pattern)
+_CURRENCY_NOISE = re.compile(r"(?i)rs\.?|lkr|usd|\$|€|£|%|,|\s")
 _BOOL_TOKENS = frozenset(TRUE_TOKENS) | frozenset(FALSE_TOKENS)
 _NUMERIC_PARSE_RATIO = 0.95
 _DATETIME_PARSE_RATIO = 0.90

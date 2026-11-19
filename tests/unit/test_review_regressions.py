@@ -37,6 +37,11 @@ def test_numeric_column_accepts_text_numbers_at_predict_time():
     assert cleaner.transform(pd.DataFrame({"n": ["1,200"]}))["n"].iloc[0] == 1200.0
 
 
+def test_euro_and_pound_prefixes_parse():
+    df = pd.DataFrame({"p": ["€1,000", "£250", "Rs. 5"] * 10})
+    assert DataCleaner().fit_transform(df)["p"].iloc[:3].tolist() == [1000.0, 250.0, 5.0]
+
+
 def test_boolean_column_accepts_one_zero_at_predict_time():
     cleaner = DataCleaner().fit(pd.DataFrame({"b": ["yes", "no", "yes"]}))
     out = cleaner.transform(pd.DataFrame({"b": ["1", 0, "No"]}))["b"]

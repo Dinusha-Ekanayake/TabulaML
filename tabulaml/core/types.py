@@ -175,6 +175,12 @@ class TrainingRun:
             row["error"] = r.error
         return row
 
+    def result_for(self, key: str) -> ModelResult:
+        for r in self.results:
+            if r.key == key:
+                return r
+        raise KeyError(key)
+
     def best(self) -> ModelResult:
         board = self.leaderboard()
         ok = board[board["status"] == "ok"]

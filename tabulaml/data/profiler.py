@@ -32,15 +32,21 @@ def _is_integer_like(values: pd.Series) -> bool:
     return bool(np.all(np.isclose(values, np.round(values))))
 
 
-def _is_monotonic(values: pd.Series) -> bool:
-    return bool(values.is_monotonic_increasing or values.is_monotonic_decreasing)
+def _is_row_counter(values: pd.Series) -> bool:
+    """Consecutive integers (0..n, 1001..1500), in any row order: a row index, not a feature.
+
+    Sortedness alone is not used: a file sorted by a genuine integer feature would otherwise
+    lose that feature by default.
+    """
+    n_unique = values.nunique()
+    return bool(values.max() - values.min() + 1 == n_unique)
 
 
 def _numeric_kind(s: pd.Series, present: pd.Series, unique_ratio: float) -> FeatureType:
     if set(present.unique()) <= {0, 1}:
         return FeatureType.BOOLEAN
     if unique_ratio > ID_UNIQUE_RATIO and _is_integer_like(present):
-        if _name_looks_like_id(str(s.name)) or _is_monotonic(present):
+        if _name_looks_like_id(str(s.name)) or _is_row_counter(present):
             return FeatureType.IDENTIFIER
     return FeatureType.NUMERIC
 

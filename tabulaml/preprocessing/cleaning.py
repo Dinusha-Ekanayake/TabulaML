@@ -61,7 +61,10 @@ def _looks_like_datetime(values: pd.Series) -> bool:
     sample = sample.sample(min(len(sample), _DATETIME_SAMPLE), random_state=0)
     if not sample.map(lambda v: bool(_DATE_SHAPE.search(v))).mean() >= _DATETIME_PARSE_RATIO:
         return False
-    parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
+    try:
+        parsed = pd.to_datetime(sample, errors="coerce", format="mixed", utc=True)
+    except (ValueError, TypeError, OverflowError):
+        return False
     return bool(parsed.notna().mean() >= _DATETIME_PARSE_RATIO)
 
 
@@ -97,8 +100,34 @@ def _to_boolean(s: pd.Series, tokens: tuple[str, ...]) -> pd.Series:
     if is_bool_dtype(s):
         return s.astype("float64")
     lower = normalize_missing(s, tokens).map(lambda v: v if pd.isna(v) else str(v).lower())
-    mapping = {**dict.fromkeys(TRUE_TOKENS, 1.0), **dict.fromkeys(FALSE_TOKENS, 0.0)}
+    # Numeric spellings are accepted at transform time (e.g. a batch file using 1/0).
+    true_tokens = (*TRUE_TOKENS, "1", "1.0")
+    false_tokens = (*FALSE_TOKENS, "0", "0.0")
+    mapping = {**dict.fromkeys(true_tokens, 1.0), **dict.fromkeys(false_tokens, 0.0)}
     return lower.map(mapping).astype("float64")
+
+
+def _to_datetime(s: pd.Series, tokens: tuple[str, ...]) -> pd.Series:
+    """Parse to timezone-naive datetime64; unparseable values become NaT."""
+    if is_datetime64_any_dtype(s):
+        return s.dt.tz_convert(None) if s.dt.tz is not None else s
+    # utc=True makes mixed offsets parse to one dtype; naive strings keep their wall time.
+    text = normalize_missing(s, tokens)
+    parsed = pd.to_datetime(text, errors="coerce", format="mixed", utc=True)
+    return parsed.dt.tz_convert(None)
+
+
+def clean_target(s: pd.Series, regression: bool) -> pd.Series:
+    """Clean a target column the same way for validation and training.
+
+    Regression: float64 via ``coerce_numeric``. Classification: stripped strings with
+    placeholder tokens as NaN and case variants merged ('yes ' / 'Yes' -> one class).
+    """
+    if regression:
+        return coerce_numeric(s)
+    text = normalize_missing(s).map(lambda v: v if pd.isna(v) else str(v))
+    canon = _canonical_forms(text)
+    return text.map(lambda v: v if pd.isna(v) else canon[v.lower()]).astype(object)
 
 
 class DataCleaner(BaseEstimator, TransformerMixin):
@@ -130,15 +159,14 @@ class DataCleaner(BaseEstimator, TransformerMixin):
 
     def _transform_column(self, s: pd.Series, col: str) -> pd.Series:
         plan = self.plan_[col]
-        if plan == PLAN_NUMERIC:
-            return pd.to_numeric(s, errors="coerce").astype("float64")
-        if plan == PLAN_NUMERIC_STRING:
-            return _parse_numbers(normalize_missing(s, self.missing_tokens)).astype("float64")
+        if plan in (PLAN_NUMERIC, PLAN_NUMERIC_STRING):
+            # Same parser for both: a numeric training column may arrive as text
+            # ("1,200", "?") in a batch file and must not silently become NaN.
+            return coerce_numeric(s, self.missing_tokens)
         if plan == PLAN_BOOLEAN:
             return _to_boolean(s, self.missing_tokens)
         if plan == PLAN_DATETIME:
-            text = normalize_missing(s, self.missing_tokens)
-            return pd.to_datetime(text, errors="coerce", format="mixed")
+            return _to_datetime(s, self.missing_tokens)
         return self._clean_category(s, col)
 
     def _clean_category(self, s: pd.Series, col: str) -> pd.Series:

@@ -154,6 +154,8 @@ class TrainingRun:
         if df.empty:
             return df
         key = f"cv_{self.primary_metric}_mean"
+        if key not in df.columns:  # e.g. every model failed, so no CV scores exist
+            df[key] = np.nan
         ascending = self.primary_metric in LOWER_IS_BETTER
         df["_failed"] = df["status"] != "ok"
         df = df.sort_values(["_failed", key], ascending=[True, ascending], na_position="last")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +37,7 @@ def _dedupe_columns(columns: list[Any]) -> list[str]:
     seen: dict[str, int] = {}
     out: list[str] = []
     for col in columns:
-        name = str(col).strip() or "unnamed"
+        name = "unnamed" if pd.isna(col) else (str(col).strip() or "unnamed")
         count = seen.get(name, 0)
         seen[name] = count + 1
         out.append(name if count == 0 else f"{name}_{count}")
@@ -50,6 +51,22 @@ def _sniff_delimiter(text: str) -> str:
         return ","
 
 
+def _read_csv_body(raw: bytes, sep: str, encoding: str, names: list[str]) -> pd.DataFrame:
+    """Read with explicit names. Rows wider than the header are an error, never silently
+    shifted into the index (misaligning every column) or truncated (losing data)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", pd.errors.ParserWarning)
+        try:
+            return pd.read_csv(
+                io.BytesIO(raw), sep=sep, encoding=encoding, header=0, names=names, index_col=False
+            )
+        except pd.errors.ParserWarning as exc:
+            raise DataLoadError(
+                "Some rows have more values than there are column names. "
+                "Check the delimiter and quoting of the file."
+            ) from exc
+
+
 def _read_csv(raw: bytes) -> pd.DataFrame:
     last_error: Exception | None = None
     for encoding in CSV_ENCODINGS:
@@ -58,7 +75,7 @@ def _read_csv(raw: bytes) -> pd.DataFrame:
             sep = _sniff_delimiter(raw.decode(encoding))
             header = pd.read_csv(io.BytesIO(raw), sep=sep, encoding=encoding, header=None, nrows=1)
             names = _dedupe_columns(list(header.iloc[0]))
-            return pd.read_csv(io.BytesIO(raw), sep=sep, encoding=encoding, header=0, names=names)
+            return _read_csv_body(raw, sep, encoding, names)
         except UnicodeDecodeError as exc:
             last_error = exc
         except (pd.errors.ParserError, pd.errors.EmptyDataError) as exc:

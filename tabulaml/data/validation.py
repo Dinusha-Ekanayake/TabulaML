@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_numeric_dtype
@@ -14,13 +16,15 @@ from tabulaml.core.types import (
     ProblemType,
     ValidationIssue,
 )
-from tabulaml.preprocessing.cleaning import coerce_numeric, normalize_missing
+from tabulaml.preprocessing.cleaning import clean_target, coerce_numeric, normalize_missing
 
+DEFAULT_TEST_SIZE = 0.2
 MAX_CLASSES_WARN = 50
 LOW_CARD_TARGET = 10
 NUMERIC_TARGET_RATIO = 0.95
 LEAKAGE_SAMPLE_ROWS = 20_000
 MIN_GROUP_SIZE_FOR_PURITY = 3
+MIN_REPEATED_COVERAGE = 0.9  # share of rows that must sit in repeated categories
 PURE_GROUP_FRACTION = 0.98
 _SEED = 0
 
@@ -44,10 +48,16 @@ def _classification_issues(y: pd.Series, target: str, cv_folds: int) -> list[Val
     if len(counts) < 2:
         return [_issue("error", "single_class", "Target has fewer than 2 classes.", target)]
     issues: list[ValidationIssue] = []
-    small = counts[counts < cv_folds]
+    # Every class must still have >= cv_folds rows in the TRAIN split after the hold-out test
+    # split, otherwise stratified CV leaves folds without that class.
+    min_rows = math.ceil(cv_folds / (1 - DEFAULT_TEST_SIZE)) + 1
+    small = counts[counts < min_rows]
     if len(small):
         names = ", ".join(map(str, small.index[:5]))
-        msg = f"Classes with fewer than {cv_folds} rows (needed for {cv_folds}-fold CV): {names}."
+        msg = (
+            f"Classes with fewer than {min_rows} rows (needed for a test split plus "
+            f"{cv_folds}-fold CV): {names}. Merge rare classes or reduce CV folds."
+        )
         issues.append(_issue("error", "class_too_small", msg, target))
     if len(counts) > MAX_CLASSES_WARN:
         msg = f"Target has {len(counts)} distinct values; it may be continuous (try regression)."
@@ -84,7 +94,7 @@ def validate_target(
         return [*issues, _issue("error", "target_all_missing", "Target is empty.", target)]
     if problem_type == ProblemType.REGRESSION:
         return issues + _regression_issues(y_raw, target)
-    y = normalize_missing(y_raw).dropna()
+    y = clean_target(y_raw, regression=False).dropna()
     return issues + _classification_issues(y, target, cv_folds)
 
 
@@ -93,7 +103,8 @@ def validate_target(
 
 def _as_float(s: pd.Series) -> pd.Series | None:
     if is_datetime64_any_dtype(s):
-        return pd.Series(s.astype("int64").where(s.notna()), index=s.index).astype("float64")
+        naive = s.dt.tz_convert(None) if s.dt.tz is not None else s
+        return (naive - pd.Timestamp("1970-01-01")).dt.total_seconds()  # NaT -> NaN
     if is_bool_dtype(s) or is_numeric_dtype(s):
         return s.astype("float64")
     return None
@@ -129,21 +140,28 @@ def _signal(values: pd.Series, y: pd.Series, y_codes: np.ndarray | None) -> tupl
 
 
 def _categorical_leak(s: pd.Series, y: pd.Series, y_codes: np.ndarray | None) -> bool:
-    valid = s.notna()
-    if valid.sum() == 0 or s[valid].nunique() < 2:
+    """True when categories (with repeated rows) determine the target almost exactly.
+
+    Singleton categories are ignored: they are trivially 'pure' and would make any
+    high-cardinality column (names, free codes) look like leakage by chance.
+    """
+    valid = s.notna() & y.notna()
+    sizes = s.map(s[valid].value_counts()).fillna(0)
+    repeated = valid & (sizes >= MIN_GROUP_SIZE_FOR_PURITY)
+    if repeated.sum() < MIN_REPEATED_COVERAGE * max(valid.sum(), 1):
         return False
-    group_sizes = s[valid].map(s[valid].value_counts())
-    if group_sizes.mean() < MIN_GROUP_SIZE_FOR_PURITY:
+    groups = s[repeated]
+    if groups.nunique() < 2:
         return False
     if y_codes is not None:
-        codes = pd.Series(y_codes, index=y.index)[valid]
-        pure = codes.groupby(s[valid]).transform("nunique") == 1
+        codes = pd.Series(y_codes, index=y.index)[repeated]
+        pure = codes.groupby(groups).transform("nunique") == 1
         return bool(pure.mean() >= PURE_GROUP_FRACTION)
-    yv = y[valid].astype(float)
+    yv = y[repeated].astype(float)
     total = ((yv - yv.mean()) ** 2).sum()
     if total == 0:
         return False
-    between = ((yv.groupby(s[valid]).transform("mean") - yv.mean()) ** 2).sum()
+    between = ((yv.groupby(groups).transform("mean") - yv.mean()) ** 2).sum()
     return bool(between / total >= LEAKAGE_CORR**2)
 
 
@@ -173,16 +191,13 @@ def detect_leakage(
     """Flag features that carry (nearly) the target itself. Expects a cleaned frame."""
     if target not in df.columns:
         return []
-    keep = df[target].notna()
-    data = df[keep]
+    regression = problem_type == ProblemType.REGRESSION
+    y_all = clean_target(df[target], regression=regression)
+    data = df[y_all.notna()]
     if len(data) > LEAKAGE_SAMPLE_ROWS:
         data = data.sample(LEAKAGE_SAMPLE_ROWS, random_state=_SEED)
-    if problem_type == ProblemType.REGRESSION:
-        y = coerce_numeric(data[target])
-        y_codes = None
-    else:
-        y = data[target]
-        y_codes = pd.factorize(y.astype(str))[0]
+    y = y_all.loc[data.index]
+    y_codes = None if regression else pd.factorize(y.astype(str))[0]
     issues: list[ValidationIssue] = []
     for col in data.columns:
         if col == target or data[col].nunique(dropna=True) <= 1:

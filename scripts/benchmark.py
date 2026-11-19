@@ -1,20 +1,25 @@
-"""Research benchmark: Random Forest vs gradient boosting (XGBoost, LightGBM, CatBoost).
+"""Benchmark: Random Forest vs gradient boosting (XGBoost, LightGBM, CatBoost).
 
-Every model is evaluated with the SAME repeated cross-validation folds through the SAME
-Automatic-mode TabulaML pipeline, so fold scores are paired and can be compared with a
-Wilcoxon signed-rank test. An ablation on the real tea-auction catalogue task shows what the
-preprocessing engine and the leakage detector contribute.
+It uses EXACTLY the app's engine, so the benchmark follows the same rules as the UI:
+- each dataset keeps its own validation design (tea: grouped by weekly sale; dengue: time
+  order; sklearn sets: random);
+- the automatic configuration is built from the training (dev) rows only;
+- models are compared with cross-validation on the dev rows, then scored once on the
+  held-out test rows.
+
+The comparison is kept simple and readable: mean +/- standard deviation over folds, and
+"RF better in k of n folds". When the folds disagree (k close to n/2) the models are
+practically tied on that dataset.
 
 Usage:
-    python scripts/benchmark.py --quick     # ~3 minutes: fewer datasets, 3 folds x 1 repeat
-    python scripts/benchmark.py             # full: 5 folds x 3 repeats
+    python scripts/benchmark.py --quick   # sample datasets only, 3 folds
+    python scripts/benchmark.py           # all datasets, 5 folds
 Outputs (reports/): benchmark_results.csv, benchmark_summary.md, figures/*.png
 """
 
 from __future__ import annotations
 
 import argparse
-import time
 import warnings
 from dataclasses import replace
 from pathlib import Path
@@ -25,51 +30,32 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-from scipy.stats import wilcoxon  # noqa: E402
-from sklearn.base import clone  # noqa: E402
 from sklearn.datasets import load_breast_cancer, load_diabetes, load_wine  # noqa: E402
-from sklearn.ensemble import RandomForestClassifier  # noqa: E402
-from sklearn.metrics import f1_score, get_scorer  # noqa: E402
-from sklearn.model_selection import (  # noqa: E402
-    RepeatedKFold,
-    RepeatedStratifiedKFold,
-    train_test_split,
-)
 
-from tabulaml.core.types import ProblemType  # noqa: E402
-from tabulaml.data.profiler import profile_dataset  # noqa: E402
+from tabulaml.core.types import LOWER_IS_BETTER, ProblemType, ValidationScheme  # noqa: E402
 from tabulaml.data.samples import list_samples, load_sample  # noqa: E402
-from tabulaml.data.validation import detect_leakage  # noqa: E402
-from tabulaml.evaluation.metrics import display_value, scoring_map  # noqa: E402
-from tabulaml.preprocessing.cleaning import clean_frame  # noqa: E402
-from tabulaml.preprocessing.recommender import recommend_config  # noqa: E402
-from tabulaml.training.pipeline_factory import build_model_pipeline  # noqa: E402
-from tabulaml.training.trainer import prepare_data  # noqa: E402
+from tabulaml.training.trainer import train_models  # noqa: E402
+from tabulaml.workflow import Roles, auto_configure  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "reports"
 CLS, REG = ProblemType.CLASSIFICATION, ProblemType.REGRESSION
 BOOSTERS = ("xgb", "lgbm", "catboost")
-PRIMARY = {CLS: "roc_auc", REG: "rmse"}
-SECONDARY = {CLS: "f1", REG: "r2"}
-NAMES = {
-    "rf": "Random Forest",
-    "xgb": "XGBoost",
-    "lgbm": "LightGBM",
-    "catboost": "CatBoost",
-    "gb": "Gradient Boosting",
-    "logreg": "Logistic Regression",
-    "ridge": "Ridge",
-}
 SEED = 42
 
 
-def _datasets(quick: bool) -> list[tuple[str, pd.DataFrame, str, ProblemType, str]]:
+def _datasets(quick: bool) -> list[tuple[str, pd.DataFrame, Roles, str]]:
     out = []
     for card in list_samples():
         df, card = load_sample(card.key)
-        origin = "real, public (Sri Lanka)"
-        out.append((card.key, df, card.target, card.problem_type, origin))
+        roles = Roles(
+            card.target,
+            card.problem_type,
+            ValidationScheme(card.validation),
+            card.group_column,
+            card.order_column,
+        )
+        out.append((card.key, df, roles, "real, public (Sri Lanka)"))
     if not quick:
         for name, loader, ptype in (
             ("breast_cancer", load_breast_cancer, CLS),
@@ -77,171 +63,173 @@ def _datasets(quick: bool) -> list[tuple[str, pd.DataFrame, str, ProblemType, st
             ("diabetes", load_diabetes, REG),
         ):
             frame = loader(as_frame=True).frame.rename(columns={"target": "y"})
-            out.append((name, frame, "y", ptype, "public benchmark (sklearn)"))
+            out.append((name, frame, Roles("y", ptype), "public benchmark (sklearn)"))
     return out
 
 
-def _config(df: pd.DataFrame, target: str, ptype: ProblemType, folds: int):
-    clean = clean_frame(df)
-    leaks = detect_leakage(clean, target, ptype)
-    cfg = recommend_config(profile_dataset(clean), target, ptype, leaks, y=df[target])
-    return replace(cfg, cv_folds=folds, random_state=SEED)
-
-
-def _metric_names(ptype: ProblemType, y: np.ndarray) -> tuple[str, str]:
-    if ptype == CLS and len(np.unique(y)) > 2:
-        return "roc_auc", "f1_macro"
-    return PRIMARY[ptype], SECONDARY[ptype]
-
-
-def _evaluate(name, df, target, ptype, origin, folds, repeats) -> list[dict]:
-    cfg = _config(df, target, ptype, folds)
-    X, y, _, _ = prepare_data(df, cfg)
-    scorers = {
-        k: get_scorer(v) if isinstance(v, str) else v for k, v in scoring_map(ptype, y).items()
-    }
-    primary, secondary = _metric_names(ptype, y)
-    splitter = (RepeatedStratifiedKFold if ptype == CLS else RepeatedKFold)(
-        n_splits=folds, n_repeats=repeats, random_state=SEED
-    )
-    linear = "logreg" if ptype == CLS else "ridge"
+def _rows(name: str, origin: str, run) -> list[dict]:  # noqa: ANN001 - TrainingRun
     rows = []
-    for key in ("rf", *BOOSTERS, "gb", linear):
-        template = build_model_pipeline(key, cfg, y=y)
-        for fold, (tr, te) in enumerate(splitter.split(X, y)):
-            model = clone(template)
-            start = time.perf_counter()
-            model.fit(X.iloc[tr], y[tr])
-            fit_s = time.perf_counter() - start
-            for metric in (primary, secondary):
-                raw = scorers[metric](model, X.iloc[te], y[te])
-                rows.append(
-                    {
-                        "dataset": name,
-                        "origin": origin,
-                        "task": ptype.value,
-                        "model": NAMES[key],
-                        "key": key,
-                        "fold": fold,
-                        "metric": metric,
-                        "value": float(display_value(metric, raw)),
-                        "fit_s": fit_s,
-                    }
-                )
-        print(f"  {name}: {NAMES[key]} done")
+    for r in run.results:
+        scores = r.cv_scores.get(run.primary_metric, ())
+        for fold, value in enumerate(scores):
+            rows.append(
+                {
+                    "dataset": name,
+                    "origin": origin,
+                    "model": r.name,
+                    "key": r.key,
+                    "status": r.status,
+                    "metric": run.primary_metric,
+                    "fold": fold,
+                    "cv_value": value,
+                    "test_value": r.test_metrics.get(run.primary_metric, np.nan),
+                    "fit_s": r.fit_seconds,
+                    "validation": run.config.validation.value,
+                }
+            )
     return rows
 
 
-def _wilcoxon(results: pd.DataFrame) -> pd.DataFrame:
-    """Per dataset: RF vs the best booster on paired fold scores of the primary metric."""
+def _evaluate(name: str, df: pd.DataFrame, roles: Roles, origin: str, folds: int) -> list[dict]:
+    roles = replace(roles, cv_folds=folds, random_state=SEED)
+    config = auto_configure(df, roles).config  # dev-only recommendations, leaks excluded
+    linear = "logreg" if roles.problem_type == CLS else "ridge"
+    run = train_models(df, config, ["rf", *BOOSTERS, "gb", linear])
+    print(f"  {name}: {', '.join(f'{r.key}={r.status}' for r in run.results)}")
+    return _rows(name, origin, run)
+
+
+def _comparisons(results: pd.DataFrame) -> pd.DataFrame:
+    """RF vs each booster, fold by fold: wins, losses and ties (equal scores)."""
     out = []
-    for dataset, part in results.groupby("dataset"):
+    for dataset, part in results.groupby("dataset", sort=False):
         metric = part["metric"].iloc[0]
-        p = part[part["metric"] == metric]
-        lower = metric in ("rmse", "mae")
-        means = p.groupby("key")["value"].mean()
-        boosters = means[[k for k in BOOSTERS if k in means]]
-        best = boosters.idxmin() if lower else boosters.idxmax()
-        rf = p[p["key"] == "rf"].sort_values("fold")["value"].to_numpy()
-        bo = p[p["key"] == best].sort_values("fold")["value"].to_numpy()
-        diff = rf - bo
-        pvalue = float(wilcoxon(rf, bo).pvalue) if np.any(diff != 0) and len(diff) >= 5 else np.nan
-        rf_better = rf.mean() < bo.mean() if lower else rf.mean() > bo.mean()
-        out.append(
-            {
-                "dataset": dataset,
-                "metric": metric,
-                "rf_mean": rf.mean(),
-                "best_booster": NAMES[best],
-                "booster_mean": bo.mean(),
-                "winner": "tie"
-                if np.isclose(rf.mean(), bo.mean(), rtol=0, atol=1e-6)
-                else ("Random Forest" if rf_better else NAMES[best]),
-                "wilcoxon_p": pvalue,
-                "significant_5pct": bool(pvalue < 0.05) if not np.isnan(pvalue) else False,
-            }
-        )
+        lower = metric in LOWER_IS_BETTER
+        rf = part[part["key"] == "rf"].sort_values("fold")["cv_value"].to_numpy()
+        for booster in BOOSTERS:
+            bo = part[part["key"] == booster].sort_values("fold")["cv_value"].to_numpy()
+            if len(bo) != len(rf) or not len(rf):
+                continue
+            tie = np.isclose(rf, bo, rtol=0, atol=1e-9)
+            rf_wins = int(((rf < bo) if lower else (rf > bo))[~tie].sum())
+            bo_wins = int(((bo < rf) if lower else (bo > rf))[~tie].sum())
+            n = len(rf)
+            verdict = (
+                "RF better"
+                if rf_wins >= 0.8 * n
+                else "booster better"
+                if bo_wins >= 0.8 * n
+                else "about the same"
+            )
+            out.append(
+                {
+                    "dataset": dataset,
+                    "metric": metric,
+                    "booster": booster,
+                    "rf_cv_mean": rf.mean(),
+                    "booster_cv_mean": bo.mean(),
+                    "folds_rf_won": rf_wins,
+                    "folds_booster_won": bo_wins,
+                    "folds_tied": int(tie.sum()),
+                    "verdict": verdict,
+                }
+            )
     return pd.DataFrame(out)
 
 
-def _fit_score(cfg, df: pd.DataFrame) -> float:
-    X, y, _, _ = prepare_data(df, cfg)
-    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=SEED, stratify=y)
-    model = build_model_pipeline("rf", cfg, y=y_tr).fit(X_tr, y_tr)
-    return f1_score(y_te, model.predict(X_te), average="macro")
+def _summary(results: pd.DataFrame) -> pd.DataFrame:
+    return (
+        results.groupby(["dataset", "origin", "validation", "model", "metric"], sort=False)
+        .agg(
+            cv_mean=("cv_value", "mean"),
+            cv_std=("cv_value", "std"),
+            test=("test_value", "first"),
+            fit_s=("fit_s", "first"),
+        )
+        .reset_index()
+    )
 
 
 def _ablation(folds: int) -> pd.DataFrame:
-    """Real tea-auction catalogue task: automatic pipeline vs leak kept vs a naive pipeline."""
+    """Tea catalogue: automatic pipeline vs the leaky 'category' kept vs ignoring groups."""
     df, card = load_sample("lk_tea_auction_catalogue")
-    cfg = _config(df, card.target, card.problem_type, folds)
-    leak = next(c for c in cfg.columns if c.name == "category")
-    rows = [
-        ("TabulaML automatic pipeline (leaky 'category' excluded)", _fit_score(cfg, df)),
-        (
-            "Same pipeline but 'category' kept (inflated: it encodes the catalogue)",
-            _fit_score(cfg.with_column(replace(leak, include=True)), df),
-        ),
-    ]
-    naive = df.drop(columns=["category"]).dropna()
-    yn = naive.pop(card.target)
-    Xn = pd.get_dummies(naive.astype(str))  # no type detection: numbers become categories
-    Xn_tr, Xn_te, yn_tr, yn_te = train_test_split(
-        Xn, yn, test_size=0.2, random_state=SEED, stratify=yn
+    roles = Roles(
+        card.target,
+        card.problem_type,
+        ValidationScheme.GROUPED,
+        "sale_id",
+        cv_folds=folds,
+        random_state=SEED,
     )
-    rf = RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=SEED).fit(Xn_tr, yn_tr)
-    rows.append(
-        (
-            f"Naive: drop rows with any NaN ({len(df) - len(naive)} lost), one-hot every column "
-            "as text",
-            f1_score(yn_te, rf.predict(Xn_te), average="macro"),
+    auto = auto_configure(df, roles).config
+    leak = next(c for c in auto.columns if c.name == "category")
+    leaky = auto.with_column(replace(leak, include=True))
+    random_cfg = auto_configure(
+        df, replace(roles, validation=ValidationScheme.RANDOM, group_column=None)
+    ).config
+    rows = []
+    for label, cfg in (
+        ("TabulaML: grouped validation, leaky 'category' excluded", auto),
+        ("Same, but 'category' kept (it encodes the answer)", leaky),
+        ("Random split that ignores the weekly-sale groups", random_cfg),
+    ):
+        run = train_models(df, cfg, ["rf"])
+        r = run.result_for("rf")
+        rows.append(
+            {
+                "setup": label,
+                "cv_f1_macro": float(np.nanmean(r.cv_scores["f1_macro"])),
+                "test_f1_macro": r.test_metrics.get("f1_macro", np.nan),
+            }
         )
-    )
-    return pd.DataFrame(rows, columns=["setup", "test_f1_macro"])
+    return pd.DataFrame(rows)
 
 
 def _figure(summary: pd.DataFrame, path: Path) -> None:
-    """Dot + std whiskers on a zoomed axis (bars from zero would hide 0.99 vs 0.995).
-    Best model on top in every panel; Random Forest highlighted."""
+    """Dots with +/- std whiskers on a zoomed axis; best model on top; RF in bold."""
     datasets = summary["dataset"].unique()
-    fig, axes = plt.subplots(2, (len(datasets) + 1) // 2, figsize=(13, 6.4), squeeze=False)
+    ncols = (len(datasets) + 1) // 2 if len(datasets) > 2 else len(datasets)
+    nrows = 2 if len(datasets) > 2 else 1
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.3 * ncols, 3.2 * nrows), squeeze=False)
     for ax, dataset in zip(axes.flat, datasets, strict=False):
         part = summary[summary["dataset"] == dataset]
         metric = part["metric"].iloc[0]
-        lower = metric in ("rmse", "mae")
-        part = part.sort_values("mean", ascending=not lower)  # worst first = bottom, best on top
+        lower = metric in LOWER_IS_BETTER
+        part = part.sort_values("cv_mean", ascending=not lower)  # worst at bottom, best on top
         for i, row in enumerate(part.itertuples()):
-            is_rf = row.model == "Random Forest"
+            rf = row.model == "Random Forest"
             ax.errorbar(
-                row.mean,
+                row.cv_mean,
                 i,
-                xerr=row.std,
+                xerr=row.cv_std,
                 fmt="o",
-                markersize=7 if is_rf else 6,
-                color="#184f95" if is_rf else "#2a78d6",
+                markersize=7 if rf else 6,
+                color="#184f95" if rf else "#2a78d6",
                 ecolor="#8c8b86",
-                elinewidth=1.5,
                 capsize=3,
             )
         ax.set_yticks(range(len(part)), part["model"])
         for label in ax.get_yticklabels():
             label.set_fontweight("bold" if label.get_text() == "Random Forest" else "normal")
-        arrow = "lower is better" if lower else "higher is better"
-        ax.set_title(f"{dataset}\n{metric} ({arrow})", fontsize=9)
+        ax.set_title(
+            f"{dataset}\n{metric} ({'lower' if lower else 'higher'} is better)", fontsize=9
+        )
         ax.tick_params(labelsize=8)
         ax.grid(axis="x", alpha=0.25)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
     for ax in list(axes.flat)[len(datasets) :]:
         ax.set_visible(False)
-    fig.suptitle("Mean +/- std over 15 paired CV folds (Random Forest in bold)", fontsize=10)
+    fig.suptitle(
+        "Cross-validation mean +/- std (training rows only; Random Forest in bold)", fontsize=10
+    )
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
 
 
 def _md_table(df: pd.DataFrame) -> str:
-    def cell(v):
+    def cell(v):  # noqa: ANN001, ANN202
         return f"{v:.4f}" if isinstance(v, float) else str(v)
 
     head = "| " + " | ".join(df.columns) + " |"
@@ -250,57 +238,40 @@ def _md_table(df: pd.DataFrame) -> str:
     return "\n".join([head, sep, *body])
 
 
-def _markdown(summary, tests, ablation, folds, repeats) -> str:
+def _markdown(
+    summary: pd.DataFrame, comparisons: pd.DataFrame, ablation: pd.DataFrame, folds: int
+) -> str:
     lines = [
         "# Benchmark: Random Forest vs gradient boosting",
         "",
-        f"Repeated cross-validation ({folds} folds x {repeats} repeats, seed {SEED}); identical "
-        "folds for every model; TabulaML Automatic-mode preprocessing for every dataset. "
-        "Error metrics (RMSE) are lower-is-better; ROC-AUC, F1 and R2 are higher-is-better.",
+        f"Same engine as the app: dev-only automatic configuration, {folds}-fold "
+        "cross-validation on the training rows with each dataset's validation design, "
+        "then one score on the held-out test rows. RMSE: lower is better; ROC-AUC, F1, "
+        "R2: higher is better.",
         "",
     ]
     for dataset, part in summary.groupby("dataset", sort=False):
         lines += [
-            f"## {dataset} ({part['origin'].iloc[0]})",
+            f"## {dataset} ({part['origin'].iloc[0]}, {part['validation'].iloc[0]} validation)",
             "",
-            "| Model | Metric | Mean | Std | Fit time (s) |",
-            "|---|---|---|---|---|",
+            _md_table(part[["model", "metric", "cv_mean", "cv_std", "test", "fit_s"]]),
+            "",
         ]
-        for _, r in part.iterrows():
-            lines.append(
-                f"| {r['model']} | {r['metric']} | {r['mean']:.4f} | {r['std']:.4f} | {r['fit_s']:.2f} |"
-            )
-        lines.append("")
     lines += [
-        "## Random Forest vs best gradient booster (Wilcoxon signed-rank on paired folds)",
+        "## Random Forest vs each booster (cross-validation folds)",
         "",
-        _md_table(tests),
+        "'RF better in k of n folds' counts the folds where Random Forest scored better. "
+        "Verdict: RF/booster better when it wins at least 80% of folds, otherwise "
+        "'about the same'.",
         "",
-        "## Ablation: what preprocessing and leakage control contribute (tea catalogue, RF, test macro-F1)",
+        _md_table(comparisons),
+        "",
+        "## Ablation on the tea catalogue task (Random Forest, macro-F1)",
         "",
         _md_table(ablation),
         "",
     ]
     return "\n".join(lines)
-
-
-def _write_outputs(results: pd.DataFrame, folds: int, repeats: int) -> None:
-    primary = results.groupby("dataset")["metric"].transform("first")
-    summary = (
-        results[results["metric"] == primary]
-        .groupby(["dataset", "origin", "model", "metric"], sort=False)
-        .agg(mean=("value", "mean"), std=("value", "std"), fit_s=("fit_s", "mean"))
-        .reset_index()
-    )
-    tests = _wilcoxon(results[results["metric"] == primary])
-    ablation = _ablation(folds)
-    (REPORTS / "figures").mkdir(parents=True, exist_ok=True)
-    _figure(summary, REPORTS / "figures" / "benchmark_primary_metric.png")
-    (REPORTS / "benchmark_summary.md").write_text(
-        _markdown(summary, tests, ablation, folds, repeats), encoding="utf-8"
-    )
-    print(tests.to_string(index=False))
-    print(ablation.to_string(index=False))
 
 
 def main() -> None:
@@ -311,22 +282,35 @@ def main() -> None:
     parser.add_argument(
         "--replot",
         action="store_true",
-        help="rebuild summary and figure from reports/benchmark_results.csv",
+        help="rebuild tables/figure from reports/benchmark_results.csv",
     )
     args = parser.parse_args()
-    folds, repeats = (3, 1) if args.quick else (5, 3)
+    folds = 3 if args.quick else 5
     warnings.filterwarnings("ignore")
     if args.replot:
-        _write_outputs(pd.read_csv(REPORTS / "benchmark_results.csv"), folds, repeats)
+        _write(pd.read_csv(REPORTS / "benchmark_results.csv"), folds)
         return
     rows = []
-    for name, df, target, ptype, origin in _datasets(args.quick):
+    for name, df, roles, origin in _datasets(args.quick):
         print(f"Benchmarking {name} ...")
-        rows += _evaluate(name, df, target, ptype, origin, folds, repeats)
+        rows += _evaluate(name, df, roles, origin, folds)
     results = pd.DataFrame(rows)
     REPORTS.mkdir(parents=True, exist_ok=True)
     results.to_csv(REPORTS / "benchmark_results.csv", index=False)
-    _write_outputs(results, folds, repeats)
+    _write(results, folds)
+
+
+def _write(results: pd.DataFrame, folds: int) -> None:
+    (REPORTS / "figures").mkdir(parents=True, exist_ok=True)
+    summary = _summary(results)
+    comparisons = _comparisons(results)
+    ablation = _ablation(folds)
+    _figure(summary, REPORTS / "figures" / "benchmark_primary_metric.png")
+    (REPORTS / "benchmark_summary.md").write_text(
+        _markdown(summary, comparisons, ablation, folds), encoding="utf-8"
+    )
+    print(comparisons.to_string(index=False))
+    print(ablation.to_string(index=False))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # TabulaML: Review Assessment and Improvement Plan (v2)
 
-Status at commit `e141791`: 6-step app, 18 models plus voting/stacking/hybrid, public Sri Lankan data only, 201 passing tests. This plan covers:
+Status: phases Q1, Q2 and P11-P19 are implemented (see docs/PROGRESS.md); P20 is optional. Written at commit `e141791`: 6-step app, 18 models plus voting/stacking/hybrid, public Sri Lankan data only, 201 passing tests. This plan covers:
 - an assessment of the external review;
 - extra defects found in a full self-review;
 - a phased plan written for Sonnet, one phase per session, in the same style as `03_IMPLEMENTATION_PLAN.md`.

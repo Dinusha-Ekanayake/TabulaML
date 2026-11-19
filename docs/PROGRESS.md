@@ -23,6 +23,22 @@
 | `lk_colombo_dengue` | colmozzie (Epidemiology Unit weekly reports) | Regression | CC0 | bundled |
 | `lk_telco_churn` | Kaggle, Lasal Jayawardena, Sri Lankan operator 2023 | Classification | CC0 | run `python scripts/fetch_public_datasets.py telco` after a Kaggle login |
 
+## v2 improvements (docs/04_IMPROVEMENT_PLAN.md)
+| Phase | Title | Status | Notes |
+|---|---|---|---|
+| Q1 | Footer | done | version, repo link, escaped dataset attribution + licence, privacy note |
+| Q2 | Streamlit Cloud readiness | done | pinned requirements, packages.txt, config.toml, cloud mode, smoke test, DEPLOYMENT.md |
+| P11 | Validation + holdout discipline | done | random/grouped/time splits; holdout before target-based recommendations; incomplete CV status; OOF dev diagnostics |
+| P12 | Cleaner types + number format | done | user types honoured, decimal comma, leading-zero codes, parse report, log1p guard, Yeo-Johnson target |
+| P13 | Imbalance correctness | done | SMOTE-NC/SMOTE-N, random oversampling, effective strategy per model |
+| P14 | Positive class, threshold, calibration | done | positive class used by metrics, curves, importance, predictor; threshold tool; calibration plot |
+| P15 | Hyperparameters | done | ParamSpec per model with help text; Default/Manual/Auto-tune (random search on dev rows, same CV); presets |
+| P16 | Leakage decisions | done | per-column "known at prediction time?" review blocks step 4 until answered |
+| P17 | Prediction validation | done | quality report: unparseable, out-of-range, unseen categories, missing share |
+| P18 | UI/UX | done (core) | model cards, holdout lock, history, reset warning, footer; background training/cancel and HTML export not done |
+| P19 | Benchmark + report | done | app engine with each dataset's validation design; simple fold-win comparison; ablation; report rewritten |
+| P20 | Optional extras | not started | SHAP, learning curves, memory guard, model cards export, Docker |
+
 ## Open decisions / blockers
 - [ ] Fetch the real telco dataset (needs a free Kaggle account): set `KAGGLE_USERNAME`/`KAGGLE_KEY` or download the zip and pass `--kaggle-dir`.
 
@@ -41,6 +57,9 @@
 - Encoding: a PowerShell 5.1 rewrite corrupted the euro/pound characters in the currency regex (commit 184e2ce) -> now ASCII `\u` escapes plus a test. Do not rewrite text files with PowerShell `Get-Content`/`Set-Content`.
 
 ## Contract changes log
+- v2: `ValidationScheme`; `PreprocessingConfig` gained `validation`, `group_column`, `order_column`, `positive_class`, `decimal`, `thousands`, `model_params`, `tuning`; `ImbalanceStrategy.RANDOM_OVERSAMPLE`; `ModelResult` gained `params`, `n_failed_folds`, `effective_imbalance`, `oof_pred/oof_proba/oof_mask`, `tuning_history`, status `incomplete`; `TrainingRun` gained `y_dev`, `positive_index`.
+- v2: `training/splits.py` (`make_holdout`, `make_cv`, `describe`), `training/tuning.py` (`tune`), `training/samplers.py` (`CategoryAwareSMOTE`), `models/params.py` (`ParamSpec`, `validate_params`, `search_space`), `workflow.py` (`Roles`, `auto_configure`, `suggest_validation`).
+- v2: `trainer.prepare()` returns `Prepared` (with original row `index`); duplicates are judged on whole rows so the split never depends on feature selection. `compute_metrics/scoring_map/permutation_importance_df` take `positive`. `DataCleaner(column_types, decimal, thousands)` + `parse_report()`. `Predictor(threshold, positive_index)` + `quality_report()`. Bundles store `params`, `threshold`, `positive_index`. `DatasetCard` gained `source_url`, `validation`, `group_column`, `order_column`.
 - Phase 1: `SAMPLE_REGISTRY` constant became `_registry()` in `data/samples.py`; `list_samples` hides cards whose CSV is not present; `load_sample` raises `FileNotFoundError` with fetch instructions.
 - Phase 1: `TrainingRun.notes` added; `cv_scores` hold display-oriented (positive) values; `LOWER_IS_BETTER` lives in `core/types.py`.
 - Review: `clean_target(s, regression)` in `preprocessing/cleaning.py`. **The trainer must use it** to build `y`.

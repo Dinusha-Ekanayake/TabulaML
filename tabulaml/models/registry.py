@@ -34,6 +34,7 @@ from sklearn.svm import SVC, SVR
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from xgboost import XGBClassifier, XGBRegressor
 
+from tabulaml.config import SVM_MAX_ROWS  # noqa: F401 - re-exported for the trainer
 from tabulaml.core.types import ModelProfile, ProblemType
 
 CLS, REG = ProblemType.CLASSIFICATION, ProblemType.REGRESSION
@@ -44,7 +45,6 @@ RECOMMENDED = {
     CLS: ["logreg", "rf", "xgb", "lgbm", "catboost"],
     REG: ["ridge", "rf", "xgb", "lgbm", "catboost"],
 }
-SVM_MAX_ROWS = 20_000
 
 Factory = Callable[[ProblemType, int], Any]
 

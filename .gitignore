@@ -9,3 +9,4 @@ htmlcov/
 # generated code graph; rebuild with: graphify update .
 graphify-out/
 *.joblib
+.streamlit/secrets.toml

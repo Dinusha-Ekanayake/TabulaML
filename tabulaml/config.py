@@ -1,5 +1,11 @@
 """Central constants and thresholds. No dataset-specific values belong here."""
 
+import os
+
+# Lighter limits for Streamlit Community Cloud (~1 GB RAM): set TABULAML_CLOUD=1
+# (environment variable or Streamlit secret, see .streamlit/secrets.toml.example).
+CLOUD_MODE = os.environ.get("TABULAML_CLOUD", "0") == "1"
+
 RANDOM_STATE = 42
 
 # Tokens treated as missing (compared lowercase after stripping).
@@ -20,7 +26,8 @@ FALSE_TOKENS: tuple[str, ...] = ("no", "n", "false", "f")
 
 # Input limits.
 MAX_FILE_MB = 200
-MAX_CELLS = 1_000_000
+MAX_CELLS = 400_000 if CLOUD_MODE else 1_000_000
+SVM_MAX_ROWS = 5_000 if CLOUD_MODE else 20_000
 MIN_ROWS = 30
 
 # Profiling / recommendation thresholds.

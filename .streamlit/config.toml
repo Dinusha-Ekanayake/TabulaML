@@ -1,0 +1,15 @@
+[server]
+headless = true
+maxUploadSize = 200
+runOnSave = false
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "viewer"
+showErrorDetails = false
+
+# Only the accent is fixed; light/dark follows the viewer's system or menu choice.
+[theme]
+primaryColor = "#2a78d6"

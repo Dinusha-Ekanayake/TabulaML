@@ -6,5 +6,6 @@ artifacts/
 .ruff_cache/
 .coverage
 htmlcov/
-graphify-out/cache*
+# generated code graph; rebuild with: graphify update .
+graphify-out/
 *.joblib

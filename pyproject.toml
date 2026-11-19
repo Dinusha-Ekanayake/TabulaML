@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tabulaml"
+version = "0.1.0"
+description = "TabulaML: interactive ML workbench with generalized preprocessing and ensemble comparison"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["tabulaml*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["tabulaml"]
+omit = ["tabulaml/ui/*"]
+
+[tool.coverage.report]
+fail_under = 80

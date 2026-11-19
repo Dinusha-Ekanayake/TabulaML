@@ -8,31 +8,72 @@ import pandas as pd
 import streamlit as st
 
 from tabulaml.core.types import ImbalanceStrategy, ModelProfile, ProblemType
-from tabulaml.data.profiler import profile_dataset
-from tabulaml.data.validation import check_supported, detect_leakage
 from tabulaml.evaluation import plots
 from tabulaml.preprocessing.builder import describe_pipeline
-from tabulaml.preprocessing.cleaning import DataCleaner, clean_target
-from tabulaml.preprocessing.recommender import recommend_config
+from tabulaml.preprocessing.cleaning import clean_target
+from tabulaml.training.splits import describe
 from tabulaml.ui.components import issues_view, nav_buttons
 from tabulaml.ui.helpers import OPTIONS, config_to_editor, editor_to_config
 from tabulaml.ui.state import AppState, get_state, reset_from, set_state
+from tabulaml.workflow import Roles, auto_configure
+
+IMBALANCE_HELP = {
+    ImbalanceStrategy.NONE: ("None", "Train on the data as it is."),
+    ImbalanceStrategy.CLASS_WEIGHT: (
+        "Class weights",
+        "Mistakes on the rare class count more. No new rows.",
+    ),
+    ImbalanceStrategy.RANDOM_OVERSAMPLE: (
+        "Random oversampling",
+        "Copies rare-class rows in the training folds.",
+    ),
+    ImbalanceStrategy.SMOTE: (
+        "SMOTE",
+        "Creates new rare-class rows between neighbours; "
+        "category columns keep real values (SMOTE-NC).",
+    ),
+    ImbalanceStrategy.UNDERSAMPLE: (
+        "Random undersampling",
+        "Drops common-class rows in the training folds.",
+    ),
+}
+
+
+def _settings() -> tuple[float, int, int]:
+    """Evaluation settings live in widget state so changing them re-runs the analysis."""
+    return (
+        float(st.session_state.get("rs_test", 0.2)),
+        int(st.session_state.get("rs_folds", 5)),
+        int(st.session_state.get("rs_seed", 42)),
+    )
 
 
 def _analyse(state: AppState) -> AppState:
-    """Profile once per dataset/target and create the Automatic config."""
-    if state.config is not None:
+    """Holdout first, then recommendations from the training rows only (workflow)."""
+    if state.config is not None and state.auto is not None:
         return state
-    with st.spinner("Profiling the dataset and recommending a pipeline..."):
-        clean = DataCleaner().fit_transform(state.raw_df)
-        schema = profile_dataset(clean)
-        leakage = tuple(detect_leakage(clean, state.target, state.problem_type))
-        supported = tuple(check_supported(clean, schema, state.target))
-        config = recommend_config(
-            schema, state.target, state.problem_type, leakage, y=state.raw_df[state.target]
-        )
+    test, folds, seed = _settings()
+    roles = Roles(
+        target=state.target,
+        problem_type=state.problem_type,
+        validation=state.validation,
+        group_column=state.group_column,
+        order_column=state.order_column,
+        test_size=test,
+        cv_folds=folds,
+        random_state=seed,
+        decimal=state.decimal,
+        positive_class=state.positive_class,
+    )
+    with st.spinner("Holding out the test rows, profiling and recommending a pipeline..."):
+        auto = auto_configure(state.raw_df, roles)
     return set_state(
-        clean_df=clean, schema=schema, leakage=leakage, supported=supported, config=config
+        auto=auto,
+        schema=auto.schema_all,
+        leakage=auto.leakage,
+        supported=auto.supported,
+        config=auto.config,
+        leakage_decisions={},
     )
 
 
@@ -42,7 +83,13 @@ def _quality_tab(state: AppState) -> None:
     c1.metric("Rows", f"{schema.n_rows:,}")
     c2.metric("Columns", len(schema.columns))
     c3.metric("Exact duplicate rows", schema.n_duplicate_rows)
-    issues_view(state.supported + state.leakage)
+    auto = state.auto
+    st.info(
+        f"{describe(state.config)} Training (dev) rows: {auto.n_dev:,}; "
+        f"held-out test rows: {auto.n_test:,}. Recommendations use the training rows only.",
+        icon=":material/verified:",
+    )
+    issues_view(state.supported + auto.split_issues + auto.format_issues)
     table = pd.DataFrame(
         [
             {
@@ -102,17 +149,27 @@ def _global_controls(state: AppState) -> None:
         "high_cardinality_threshold": int(high),
     }
     if state.problem_type == ProblemType.CLASSIFICATION:
-        options = [s.value for s in ImbalanceStrategy]
+        options = list(ImbalanceStrategy)
         imb = c3.selectbox(
-            "Class imbalance", options, options.index(cfg.imbalance.value), key="g_imb"
+            "Class imbalance",
+            options,
+            options.index(cfg.imbalance),
+            format_func=lambda s: IMBALANCE_HELP[s][0],
+            key="g_imb",
         )
-        changes["imbalance"] = ImbalanceStrategy(imb)
+        c3.caption(IMBALANCE_HELP[imb][1])
+        changes["imbalance"] = imb
     else:
+        y = clean_target(state.raw_df[state.target], regression=True)
+        allowed = ["none", "yeo_johnson"] + (["log1p"] if y.min() > -1 else [])
+        current = cfg.target_transform if cfg.target_transform in allowed else "none"
         tt = c3.selectbox(
             "Target transform",
-            ["none", "log1p"],
-            ["none", "log1p"].index(cfg.target_transform),
+            allowed,
+            allowed.index(current),
             key="g_tt",
+            help="log1p suits positive, right-skewed targets (counts, prices); "
+            "Yeo-Johnson also works with negative values.",
         )
         changes["target_transform"] = tt
     new = replace(cfg, **changes)
@@ -173,33 +230,105 @@ def _preview_tab(state: AppState) -> None:
     )
 
 
-def _run_settings(state: AppState) -> None:
-    cfg = state.config
-    with st.expander("Evaluation settings"):
+def _run_settings() -> None:
+    """Changing these re-runs the analysis (a new holdout means new recommendations)."""
+    with st.expander("Evaluation settings (test share, folds, seed)"):
         c1, c2, c3 = st.columns(3)
-        test = c1.slider("Test set share", 0.1, 0.4, cfg.test_size, 0.05, key="rs_test")
-        folds = c2.slider("Cross-validation folds", 2, 10, cfg.cv_folds, key="rs_folds")
-        seed = c3.number_input("Random seed", 0, 10_000, cfg.random_state, key="rs_seed")
-    new = replace(cfg, test_size=test, cv_folds=folds, random_state=int(seed))
-    if new != cfg:
-        reset_from(4, config=new)
+        c1.slider("Test set share", 0.1, 0.4, 0.2, 0.05, key="rs_test", on_change=_restart_analysis)
+        c2.slider("Cross-validation folds", 2, 10, 5, key="rs_folds", on_change=_restart_analysis)
+        c3.number_input("Random seed", 0, 10_000, 42, key="rs_seed", on_change=_restart_analysis)
+        st.caption(
+            "Changing these re-creates the held-out test set and re-runs the "
+            "recommendations; custom edits are reset."
+        )
+
+
+def _restart_analysis() -> None:
+    reset_from(3)
+
+
+def _leakage_tab(state: AppState) -> bool:
+    """P16: the user decides every flagged column. Returns True when all are answered."""
+    flagged = [i for i in state.auto.leakage if i.column]
+    if not flagged:
+        st.success("No column looks like target leakage.", icon=":material/check_circle:")
+        return True
+    st.write(
+        "These columns are almost perfectly related to the target. That can be genuine, or the "
+        "value may only be known AFTER the outcome (leakage). They are excluded until you "
+        "decide."
+    )
+    decisions = dict(state.leakage_decisions)
+    for issue in flagged:
+        with st.container(border=True):
+            st.markdown(f"**{issue.column}**")
+            st.caption(issue.message)
+            answer = st.radio(
+                "Will this value be known at the moment you make a prediction?",
+                ["No: keep it excluded", "Yes: use it as a feature"],
+                index=None if issue.column not in decisions else int(decisions[issue.column]),
+                key=f"leak_{issue.column}",
+                horizontal=True,
+            )
+            if answer is not None:
+                decisions[issue.column] = answer.startswith("Yes")
+    if decisions != state.leakage_decisions:
+        _apply_decisions(state, decisions)
+    return all(i.column in decisions for i in flagged)
+
+
+def _apply_decisions(state: AppState, decisions: dict[str, bool]) -> None:
+    config = state.config
+    for column, keep in decisions.items():
+        current = next((c for c in config.columns if c.name == column), None)
+        if current is None:
+            continue
+        reason = (
+            "Included: you confirmed it is known at prediction time."
+            if keep
+            else "Excluded: you confirmed it is not known at prediction time."
+        )
+        config = config.with_column(replace(current, include=keep, reason=reason))
+    explanations = tuple(e for e in config.explanations if not e.startswith("Leakage review:"))
+    summary = "Leakage review: " + "; ".join(
+        f"'{c}' {'kept' if k else 'excluded'}" for c, k in decisions.items()
+    )
+    reset_from(
+        4,
+        config=replace(config, explanations=(*explanations, summary)),
+        leakage_decisions=decisions,
+    )
 
 
 def render(state: AppState) -> None:
     st.header("3. Data quality and preprocessing")
-    state = _analyse(state)
-    quality, preprocessing, preview = st.tabs(
-        ["Data quality report", "Preprocessing", "Pipeline preview"]
+    st.caption(
+        "Check the data, review possible leakage, and see exactly how each model "
+        "family will prepare it."
+    )
+    _run_settings()
+    state = _analyse(get_state())
+    n_flagged = len([i for i in state.auto.leakage if i.column])
+    quality, leakage, preprocessing, preview = st.tabs(
+        [
+            "Data quality report",
+            f"Leakage review ({n_flagged})" if n_flagged else "Leakage review",
+            "Preprocessing",
+            "Pipeline preview",
+        ]
     )
     with quality:
         _quality_tab(state)
+    with leakage:
+        answered = _leakage_tab(state)
     with preprocessing:
-        _preprocessing_tab(state)
-    _run_settings(get_state())
+        _preprocessing_tab(get_state())
     with preview:
         _preview_tab(get_state())
-    blocked = any(i.level == "error" for i in state.supported)
+    blocked = any(i.level == "error" for i in state.supported + state.auto.split_issues)
     has_features = any(c.include for c in get_state().config.columns)
     if not has_features:
         st.error("Include at least one feature column.")
-    nav_buttons(back=2, next_step=4, next_enabled=not blocked and has_features)
+    if not answered:
+        st.warning("Answer the leakage review before choosing models.", icon=":material/report:")
+    nav_buttons(back=2, next_step=4, next_enabled=not blocked and has_features and answered)

@@ -9,6 +9,7 @@ from pathlib import Path
 import streamlit as st
 
 from tabulaml.core.types import ValidationIssue
+from tabulaml.ui.history import list_runs
 from tabulaml.ui.state import STEPS, AppState, can_enter, go_to
 
 CSS = "<style>" + (Path(__file__).with_name("style.css")).read_text(encoding="utf-8") + "</style>"
@@ -72,6 +73,7 @@ def sidebar_stepper(state: AppState) -> None:
             ):
                 go_to(number)
         st.divider()
+        _history()
         if st.button("Start over", key="nav_reset", width="stretch"):
             st.session_state.clear()
             st.rerun()
@@ -130,3 +132,34 @@ def nav_buttons(
         width="stretch",
     ):
         go_to(next_step)
+
+
+def _history() -> None:
+    """Past runs saved on this machine (config + metrics, no models)."""
+    runs = list_runs()
+    with st.expander(f":material/history: Past runs ({len(runs)})"):
+        if not runs:
+            st.caption("Runs appear here after you train models.")
+            return
+        for report in runs[:10]:
+            board = report.get("leaderboard") or []
+            best = board[0] if board else {}
+            metric = report.get("primary_metric", "")
+            score = best.get(f"cv_{metric}_mean")
+            score_text = f"{score:.4f}" if isinstance(score, (int, float)) else "n/a"
+            dataset = report.get("dataset", "?")
+            when = str(report.get("saved_at", ""))[:15]
+            st.markdown(
+                f"**{dataset}**  \n{when} · best {best.get('model', '?')} · "
+                f"CV {metric} {score_text}"
+            )
+
+
+def results_will_reset_warning(state: AppState) -> None:
+    """Shown on steps 2-4 when trained results exist: edits here clear them."""
+    if state.run is not None and state.step in (2, 3, 4):
+        st.warning(
+            "You already have trained results. Changing settings on this step clears "
+            "them, and you will need to train again.",
+            icon=":material/restart_alt:",
+        )

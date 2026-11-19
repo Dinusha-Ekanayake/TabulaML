@@ -15,7 +15,12 @@ except Exception:  # noqa: BLE001 - having no secrets file locally is normal
 
 try:
     from tabulaml.config import CLOUD_MODE
-    from tabulaml.ui.components import footer, inject_css, sidebar_stepper
+    from tabulaml.ui.components import (
+        footer,
+        inject_css,
+        results_will_reset_warning,
+        sidebar_stepper,
+    )
     from tabulaml.ui.state import can_enter, get_state, set_state
     from tabulaml.ui.steps import (
         s1_problem,
@@ -51,6 +56,7 @@ if not can_enter(state, state.step):  # e.g. stale step after a reset
 sidebar_stepper(state)
 if CLOUD_MODE:
     st.sidebar.caption(":material/cloud: Cloud mode: smaller upload limit and lighter models.")
+results_will_reset_warning(state)
 try:
     PAGES[state.step](state)
 except Exception as exc:  # noqa: BLE001 - never show a raw traceback to the user

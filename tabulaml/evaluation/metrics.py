@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -206,3 +207,29 @@ def compute_metrics(
     if y_proba is not None:
         out |= _probability_metrics(y_true, np.asarray(y_proba, dtype=float), pos)
     return {k: float(v) for k, v in out.items()}
+
+
+def threshold_curve(y_true: Any, proba_pos: Any, positive: int) -> pd.DataFrame:
+    """Precision / recall / F1 of the positive class at thresholds 0.05 ... 0.95."""
+
+    y = np.asarray(y_true) == positive
+    p = np.asarray(proba_pos, dtype=float)
+    rows = []
+    for thr in np.round(np.arange(0.05, 0.96, 0.01), 2):
+        pred = p >= thr
+        rows.append(
+            {
+                "threshold": float(thr),
+                "precision": precision_score(y, pred, zero_division=0),
+                "recall": recall_score(y, pred, zero_division=0),
+                "f1": f1_score(y, pred, zero_division=0),
+                "balanced_accuracy": balanced_accuracy_score(y, pred),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def best_threshold(y_true: Any, proba_pos: Any, positive: int, objective: str = "f1") -> float:
+    """Threshold that maximises ``objective`` on (out-of-fold) dev predictions."""
+    curve = threshold_curve(y_true, proba_pos, positive)
+    return float(curve.loc[curve[objective].idxmax(), "threshold"])

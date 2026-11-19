@@ -23,6 +23,13 @@ def _click(at: AppTest, key: str) -> AppTest:
     return at.run(timeout=TIMEOUT)
 
 
+def _answer_leaks(at: AppTest) -> AppTest:
+    for radio in at.radio:
+        if str(radio.key or "").startswith("leak_"):
+            radio.set_value("No: keep it excluded")
+    return at.run(timeout=TIMEOUT)
+
+
 def _to_step3(problem: str, sample_title_part: str) -> AppTest:
     at = AppTest.from_file(APP, default_timeout=TIMEOUT).run()
     _no_errors(at)
@@ -39,8 +46,10 @@ def _to_step3(problem: str, sample_title_part: str) -> AppTest:
 
 def test_classification_flow_end_to_end():
     at = _to_step3("classification", "Tea Auction")
-    warnings = " ".join(str(w.value) for w in at.warning)
-    assert "category" in warnings  # real structural leak surfaced in the quality report
+    # The real structural leak ('category') must be decided by the user before step 4.
+    assert at.button(key="next_4").disabled
+    at = _answer_leaks(at)
+    assert not at.button(key="next_4").disabled
     at = _click(at, "next_4")
     for key in ("m_logreg", "m_rf"):
         at.toggle(key=key).set_value(True)
@@ -49,6 +58,10 @@ def test_classification_flow_end_to_end():
     _no_errors(at)
     assert at.session_state["tml_state"].step == 5
     assert at.session_state["tml_state"].run.best().status == "ok"
+    # Holdout lock: test columns hidden until the user reveals them on purpose.
+    assert not at.session_state["tml_state"].test_revealed
+    at = _click(at, "reveal_test")
+    assert at.session_state["tml_state"].test_revealed
     at = _click(at, "next_6")
     _no_errors(at)
     at.button(key="FormSubmitter:single_record-Predict").click()
@@ -94,7 +107,7 @@ def test_footer_on_every_step_with_dataset_attribution():
 
 
 def test_model_cards_and_selection_bar():
-    at = _to_step3("classification", "Tea Auction")
+    at = _answer_leaks(_to_step3("classification", "Tea Auction"))
     at = _click(at, "next_4")
     _no_errors(at)
     at = _click(at, "rec_set")

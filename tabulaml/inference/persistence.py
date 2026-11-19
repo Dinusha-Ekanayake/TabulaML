@@ -32,7 +32,10 @@ def _package_version(name: str) -> str:
 
 
 def make_bundle(
-    result: ModelResult, run: TrainingRun, input_spec: Sequence[dict]
+    result: ModelResult,
+    run: TrainingRun,
+    input_spec: Sequence[dict],
+    threshold: float | None = None,
 ) -> dict[str, Any]:
     if result.status != "ok" or result.pipeline is None:
         raise ValueError(f"Model '{result.name}' did not train successfully; nothing to save.")
@@ -45,16 +48,24 @@ def make_bundle(
         "class_labels": run.class_labels,
         "input_spec": list(input_spec),
         "test_metrics": dict(result.test_metrics),
+        "params": dict(result.params),
+        "threshold": threshold,
+        "positive_index": run.positive_index,
         "versions": dict(run.versions),
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tabulaml_version": _package_version("tabulaml"),
     }
 
 
-def bundle_bytes(result: ModelResult, run: TrainingRun, input_spec: Sequence[dict]) -> bytes:
+def bundle_bytes(
+    result: ModelResult,
+    run: TrainingRun,
+    input_spec: Sequence[dict],
+    threshold: float | None = None,
+) -> bytes:
     """Serialised bundle for a download button."""
     buffer = io.BytesIO()
-    joblib.dump(make_bundle(result, run, input_spec), buffer, compress=3)
+    joblib.dump(make_bundle(result, run, input_spec, threshold), buffer, compress=3)
     return buffer.getvalue()
 
 
@@ -82,5 +93,10 @@ def load_bundle(source: str | Path | bytes) -> Predictor:
     if saved and saved != current:
         logger.warning("Bundle saved with scikit-learn %s, running %s.", saved, current)
     return Predictor(
-        bundle["pipeline"], bundle["config"], bundle["class_labels"], bundle["input_spec"]
+        bundle["pipeline"],
+        bundle["config"],
+        bundle["class_labels"],
+        bundle["input_spec"],
+        threshold=bundle.get("threshold"),
+        positive_index=bundle.get("positive_index"),
     )

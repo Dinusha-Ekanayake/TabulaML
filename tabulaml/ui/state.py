@@ -10,7 +10,13 @@ from typing import Any
 
 import streamlit as st
 
-from tabulaml.core.types import PreprocessingConfig, ProblemType, TrainingRun, ValidationIssue
+from tabulaml.core.types import (
+    PreprocessingConfig,
+    ProblemType,
+    TrainingRun,
+    ValidationIssue,
+    ValidationScheme,
+)
 
 STATE_KEY = "tml_state"
 STEPS = (
@@ -24,10 +30,21 @@ STEPS = (
 
 # Which fields belong to (are produced by) each step.
 _STEP_FIELDS = {
-    2: ("raw_df", "source", "card", "target", "filename"),
-    3: ("clean_df", "schema", "leakage", "supported", "config"),
+    2: (
+        "raw_df",
+        "source",
+        "card",
+        "target",
+        "filename",
+        "validation",
+        "group_column",
+        "order_column",
+        "decimal",
+        "positive_class",
+    ),
+    3: ("clean_df", "schema", "leakage", "supported", "config", "auto", "leakage_decisions"),
     4: ("selected_models", "ensemble_bases", "primary_metric", "run"),
-    5: ("importance",),
+    5: ("importance", "thresholds", "test_revealed"),
     6: ("input_spec",),
 }
 
@@ -52,6 +69,18 @@ class AppState:
     run: TrainingRun | None = None
     importance: dict[str, Any] = field(default_factory=dict)
     input_spec: tuple[dict, ...] = ()
+    # step 2: column roles and number format
+    validation: ValidationScheme = ValidationScheme.RANDOM
+    group_column: str | None = None
+    order_column: str | None = None
+    decimal: str = "."
+    positive_class: str | None = None
+    # step 3: automatic analysis (holdout-first) and the user's leakage answers
+    auto: Any = None
+    leakage_decisions: dict[str, bool] = field(default_factory=dict)  # col -> keep it?
+    # step 5: chosen decision thresholds (binary) and the holdout lock
+    thresholds: dict[str, float] = field(default_factory=dict)
+    test_revealed: bool = False
 
 
 def get_state() -> AppState:

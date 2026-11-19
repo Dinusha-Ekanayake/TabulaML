@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from itertools import groupby
 
 import streamlit as st
 
-from tabulaml.core.types import ModelProfile
+from tabulaml.core.types import ModelProfile, PreprocessingConfig
 from tabulaml.evaluation.metrics import default_primary_metric, scoring_map
 from tabulaml.models.registry import ENSEMBLE_KEYS, RECOMMENDED, list_models
+from tabulaml.training.splits import describe
 from tabulaml.training.trainer import prepare_data, train_models
 from tabulaml.ui.components import nav_buttons
 from tabulaml.ui.helpers import metric_label
+from tabulaml.ui.history import save_run
 from tabulaml.ui.model_meta import GROUP_ICONS, SPEED_CLASS, meta_for
 from tabulaml.ui.state import AppState, get_state, reset_from, set_state
+from tabulaml.ui.steps.s4_params import settings_panel
 
 PROFILE_BADGE = {
     ModelProfile.TREE: "tree pipeline",
@@ -136,7 +140,9 @@ def _primary_metric(state: AppState, y) -> str:  # noqa: ANN001
     )
 
 
-def _train(state: AppState, selected: list[str], bases: dict, primary: str) -> None:
+def _train(
+    state: AppState, selected: list[str], bases: dict, primary: str, config: PreprocessingConfig
+) -> None:
     bar = st.progress(0.0, text="Starting...")
 
     def progress(key: str, i: int, n: int) -> None:
@@ -152,7 +158,7 @@ def _train(state: AppState, selected: list[str], bases: dict, primary: str) -> N
     ) as status:
         run = train_models(
             state.raw_df,
-            state.config,
+            config,
             selected,
             primary_metric=primary,
             progress=progress,
@@ -160,9 +166,11 @@ def _train(state: AppState, selected: list[str], bases: dict, primary: str) -> N
         )
         failed = [r for r in run.results if r.status != "ok"]
         status.update(
-            label=f"Done: {len(run.results) - len(failed)} trained, {len(failed)} failed",
+            label=f"Done: {len(run.results) - len(failed)} fully validated, "
+            f"{len(failed)} failed or incomplete",
             state="complete" if not failed else "error",
         )
+    save_run(run, state.card.title if state.card else (state.filename or "upload"))
     reset_from(
         5,
         run=run,
@@ -184,16 +192,27 @@ def render(state: AppState) -> None:
     _selection_bar(state)
     selected = _model_cards(state)
     bases = _ensemble_bases(state, selected)
+    manual, tuning = settings_panel(selected)
     _, y, _, _ = prepare_data(state.raw_df, state.config)
     primary = _primary_metric(state, y)
     if tuple(selected) != state.selected_models:
         set_state(selected_models=tuple(selected))
     ready = bool(selected) and all(len(b) >= MIN_BASES for b in bases.values())
-    st.caption(
-        f"{len(selected)} model(s) selected. Each is cross-validated "
-        f"({state.config.cv_folds} folds) on the training split, then scored once on "
-        f"the held-out test set ({state.config.test_size:.0%})."
-    )
+    _summary(state, selected, tuning)
     if st.button("Train & Predict", type="primary", disabled=not ready, key="train"):
-        _train(get_state(), selected, bases, primary)
+        config = replace(get_state().config, model_params=manual, tuning=tuning)
+        _train(get_state(), selected, bases, primary, config)
     nav_buttons(back=3, next_step=5 if state.run else None)
+
+
+def _summary(state: AppState, selected: list[str], tuning: dict[str, int]) -> None:
+    """Plain summary of what will happen when Train & Predict is pressed."""
+    cfg = state.config
+    fits = sum((tuning.get(k, 0) + 1) * cfg.cv_folds + 1 for k in selected)
+    tuned = f", {len(tuning)} with auto-tuning" if tuning else ""
+    st.info(
+        f"**{len(selected)} model(s){tuned}** \u2192 about {fits} model fits. "
+        f"{describe(cfg)} The held-out test set ({cfg.test_size:.0%}) is scored once at the "
+        "end and stays locked until you reveal it.",
+        icon=":material/schedule:",
+    )

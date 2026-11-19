@@ -79,6 +79,20 @@ def _batch(predictor: Predictor) -> None:
     issues_view(issues)
     if any(i.level == "error" for i in issues):
         return
+    quality = predictor.quality_report(df)
+    if quality.empty:
+        st.success(
+            "The file looks like the training data: no parsing problems, no values "
+            "outside the training range, no new categories.",
+            icon=":material/check:",
+        )
+    else:
+        st.warning(
+            "Some values differ from the training data. Predictions are still made, "
+            "but check these columns:",
+            icon=":material/warning:",
+        )
+        st.dataframe(quality, hide_index=True, width="stretch")
     scored = predictor.predict_batch(df)
     st.dataframe(scored.head(200), hide_index=True, width="stretch")
     st.download_button(
@@ -96,9 +110,28 @@ def render(state: AppState) -> None:
     run = state.run
     ok = {r.name: r for r in run.results if r.status == "ok"}
     names = list(ok)
-    choice = st.selectbox("Model", names, index=names.index(run.best().name), key="predict_model")
+    choice = st.selectbox(
+        "Model",
+        names,
+        index=names.index(run.best().name),
+        key="predict_model",
+        help="Only fully validated models are listed.",
+    )
     result = ok[choice]
-    predictor = Predictor(result.pipeline, run.config, run.class_labels, state.input_spec)
+    threshold = state.thresholds.get(result.key)
+    predictor = Predictor(
+        result.pipeline,
+        run.config,
+        run.class_labels,
+        state.input_spec,
+        threshold=threshold,
+        positive_index=run.positive_index,
+    )
+    if threshold is not None:
+        st.caption(
+            f"Using your decision threshold {threshold:.2f} for "
+            f"'{run.class_labels[run.positive_index]}' (set in step 5)."
+        )
     single, batch, export = st.tabs(["Single record", "Batch file", "Download model"])
     with single:
         _single(predictor, state)
@@ -111,7 +144,7 @@ def render(state: AppState) -> None:
             icon="\U0001f512",
         )
         if st.button("Prepare model bundle", key="prep_bundle"):
-            data = bundle_bytes(result, run, state.input_spec)
+            data = bundle_bytes(result, run, state.input_spec, threshold)
             st.download_button(
                 "Download .joblib bundle",
                 data,

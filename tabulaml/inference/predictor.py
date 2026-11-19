@@ -57,12 +57,17 @@ class Predictor:
         config: PreprocessingConfig,
         class_labels: Sequence[str] | None,
         input_spec: Sequence[dict[str, Any]],
+        threshold: float | None = None,
+        positive_index: int | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.config = config
         self.class_labels = tuple(class_labels) if class_labels else None
         self._input_spec = list(input_spec)
-        self.feature_columns = [c.name for c in config.included() if c.name != config.target]
+        roles = {config.target, config.group_column, config.order_column}
+        self.feature_columns = [c.name for c in config.included() if c.name not in roles]
+        self.threshold = threshold  # binary only: P(positive) >= threshold -> positive
+        self.positive_index = positive_index
 
     @property
     def is_classifier(self) -> bool:
@@ -102,12 +107,51 @@ class Predictor:
             raise ValueError(" ".join(errors))
         X = df[self.feature_columns]
         out = df.copy()
-        out["prediction"] = self._decode(np.asarray(self.pipeline.predict(X)).ravel())
+        pred = np.asarray(self.pipeline.predict(X)).ravel()
         if self.is_classifier and hasattr(self.pipeline, "predict_proba"):
-            proba = self.pipeline.predict_proba(X)
+            proba = np.asarray(self.pipeline.predict_proba(X), dtype=float)
+            pred = self._apply_threshold(pred, proba)
             for i, label in enumerate(self.class_labels or range(proba.shape[1])):
                 out[f"proba_{label}"] = proba[:, i]
+        out["prediction"] = self._decode(pred)
         return out
+
+    def _apply_threshold(self, pred: np.ndarray, proba: np.ndarray) -> np.ndarray:
+        """Binary tasks with a chosen threshold: positive when P(positive) >= threshold."""
+        if self.threshold is None or self.positive_index is None or proba.shape[1] != 2:
+            return pred
+        pos = self.positive_index
+        return np.where(proba[:, pos] >= self.threshold, pos, 1 - pos)
+
+    def quality_report(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Per column: unparseable values, values outside the training range, unseen
+        categories and missing share. Shown before batch scoring (nothing is changed)."""
+        rows: list[dict[str, Any]] = []
+        cleaner = _find_cleaner(self.pipeline)
+        parse = cleaner.parse_report(df) if cleaner is not None else {}
+        for spec in self._input_spec:
+            name = spec["name"]
+            if name not in df.columns:
+                continue
+            col = df[name]
+            if name in parse:
+                rows.append(
+                    _issue_row(
+                        name, "could not be parsed", parse[name]["failed"], parse[name]["examples"]
+                    )
+                )
+            rows.extend(_range_rows(name, spec, col, cleaner))
+            missing = float(col.isna().mean())
+            if missing > 0.2:
+                rows.append(
+                    _issue_row(
+                        name,
+                        "many missing values",
+                        int(col.isna().sum()),
+                        [f"{missing:.0%} missing"],
+                    )
+                )
+        return pd.DataFrame(rows, columns=["column", "issue", "rows", "examples"])
 
     def predict_one(self, record: Mapping[str, Any]) -> dict[str, Any]:
         row = pd.DataFrame([dict(record)]).reindex(columns=self.feature_columns)
@@ -123,3 +167,58 @@ class Predictor:
         if not self.is_classifier:
             prediction = float(prediction)
         return {"prediction": prediction, "probabilities": probabilities}
+
+
+def _find_cleaner(estimator: Any) -> Any:
+    """The fitted DataCleaner inside a (target-wrapped / ensemble) pipeline, if any."""
+    est = (
+        getattr(estimator, "regressor_", None) or getattr(estimator, "regressor", None) or estimator
+    )
+    steps = getattr(est, "named_steps", None)
+    if steps and "cleaner" in steps:
+        return steps["cleaner"]
+    for _, member in (
+        getattr(est, "estimators_", []) or getattr(est, "named_estimators_", {}).items()
+    ):
+        found = _find_cleaner(member)
+        if found is not None:
+            return found
+    return None
+
+
+def _issue_row(column: str, issue: str, rows: int, examples: Sequence[Any]) -> dict[str, Any]:
+    return {
+        "column": column,
+        "issue": issue,
+        "rows": int(rows),
+        "examples": ", ".join(map(str, list(examples)[:3])),
+    }
+
+
+def _range_rows(name: str, spec: dict[str, Any], col: pd.Series, cleaner: Any) -> list[dict]:
+    if spec["type"] == "numeric" and spec.get("min") is not None:
+        from tabulaml.preprocessing.cleaning import coerce_numeric
+
+        values = coerce_numeric(col)
+        outside = (values < spec["min"]) | (values > spec["max"])
+        if outside.any():
+            return [
+                _issue_row(
+                    name,
+                    f"outside training range [{spec['min']:g}, {spec['max']:g}]",
+                    int(outside.sum()),
+                    values[outside].unique(),
+                )
+            ]
+    if spec["type"] == "categorical" and cleaner is not None:
+        seen = set(cleaner.category_maps_.get(name, {}))
+        if seen:
+            text = col.dropna().astype(str).str.strip().str.lower()
+            unseen = text[~text.isin(seen)]
+            if len(unseen):
+                return [
+                    _issue_row(
+                        name, "categories not seen in training", len(unseen), unseen.unique()
+                    )
+                ]
+    return []

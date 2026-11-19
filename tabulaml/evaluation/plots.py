@@ -110,16 +110,22 @@ def confusion_matrix_fig(y_true: Any, y_pred: Any, labels: Sequence[str]) -> go.
     return _layout(fig, "Confusion matrix (count and % of actual class)", "Predicted", "Actual")
 
 
-def _class_curves(y_true: Any, proba: np.ndarray, labels: Sequence[str]) -> list[tuple[str, int]]:
+def _class_curves(
+    y_true: Any, proba: np.ndarray, labels: Sequence[str], positive: int | None = None
+) -> list[tuple[str, int]]:
+    """Binary: one curve for the POSITIVE class (the same one the metrics use)."""
     if proba.shape[1] == 2:
-        return [(labels[1], 1)]
+        pos = 1 if positive is None else positive
+        return [(labels[pos], pos)]
     return [(lab, i) for i, lab in enumerate(labels)][:MAX_SERIES]
 
 
-def roc_fig(y_true: Any, proba: np.ndarray, labels: Sequence[str]) -> go.Figure:
+def roc_fig(
+    y_true: Any, proba: np.ndarray, labels: Sequence[str], positive: int | None = None
+) -> go.Figure:
     y_true = np.asarray(y_true)
     fig = go.Figure()
-    for k, (label, i) in enumerate(_class_curves(y_true, proba, labels)):
+    for k, (label, i) in enumerate(_class_curves(y_true, proba, labels, positive)):
         fpr, tpr, _ = roc_curve(y_true == i, proba[:, i])
         fig.add_trace(
             go.Scatter(
@@ -142,10 +148,12 @@ def roc_fig(y_true: Any, proba: np.ndarray, labels: Sequence[str]) -> go.Figure:
     return _layout(fig, "ROC curve (one-vs-rest)", "False positive rate", "True positive rate")
 
 
-def pr_fig(y_true: Any, proba: np.ndarray, labels: Sequence[str]) -> go.Figure:
+def pr_fig(
+    y_true: Any, proba: np.ndarray, labels: Sequence[str], positive: int | None = None
+) -> go.Figure:
     y_true = np.asarray(y_true)
     fig = go.Figure()
-    for k, (label, i) in enumerate(_class_curves(y_true, proba, labels)):
+    for k, (label, i) in enumerate(_class_curves(y_true, proba, labels, positive)):
         precision, recall, _ = precision_recall_curve(y_true == i, proba[:, i])
         fig.add_trace(
             go.Scatter(
@@ -293,3 +301,55 @@ def probability_fig(probabilities: dict[str, float]) -> go.Figure:
     )
     fig.update_xaxes(range=[0, 1.1], tickformat=".0%")
     return _layout(fig, "Predicted probability by class", height=max(200, 50 * len(labels) + 80))
+
+
+def calibration_fig(y_true: Any, proba_pos: np.ndarray, positive: int, label: str) -> go.Figure:
+    """Do predicted probabilities match reality? Points near the diagonal = trustworthy."""
+    from sklearn.calibration import calibration_curve
+
+    frac, mean_pred = calibration_curve(
+        np.asarray(y_true) == positive, proba_pos, n_bins=10, strategy="quantile"
+    )
+    fig = go.Figure(
+        [
+            go.Scatter(
+                x=mean_pred,
+                y=frac,
+                mode="lines+markers",
+                name=f"Model ({label})",
+                line={"color": PRIMARY, "width": 2},
+                marker={"size": 8},
+                hovertemplate="Predicted %{x:.2f}<br>Observed %{y:.2f}<extra></extra>",
+            ),
+            go.Scatter(
+                x=[0, 1],
+                y=[0, 1],
+                mode="lines",
+                name="Perfectly calibrated",
+                line={"color": REFERENCE, "dash": "dash", "width": 1},
+            ),
+        ]
+    )
+    return _layout(
+        fig,
+        "Calibration: predicted vs observed probability",
+        "Mean predicted probability",
+        "Observed share",
+    )
+
+
+def threshold_fig(curve: pd.DataFrame, chosen: float) -> go.Figure:
+    """Precision, recall and F1 of the positive class for every decision threshold."""
+    fig = go.Figure()
+    for k, col in enumerate(("precision", "recall", "f1")):
+        fig.add_trace(
+            go.Scatter(
+                x=curve["threshold"],
+                y=curve[col],
+                mode="lines",
+                name=col,
+                line={"color": SERIES[k], "width": 2},
+            )
+        )
+    fig.add_vline(x=chosen, line={"color": REFERENCE, "dash": "dash", "width": 1})
+    return _layout(fig, "Effect of the decision threshold", "Threshold", "Score")

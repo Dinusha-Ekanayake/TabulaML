@@ -27,6 +27,7 @@ def permutation_importance_df(
     y_reference: Any = None,
     n_repeats: int = 5,
     random_state: int = 42,
+    positive: int | None = None,
 ) -> pd.DataFrame:
     """Drop in ``metric`` when each column is shuffled (bigger = more important)."""
     X = X_test
@@ -34,7 +35,8 @@ def permutation_importance_df(
     if len(X) > MAX_ROWS:
         X = X.sample(MAX_ROWS, random_state=random_state)
         y = y.loc[X.index]
-    scorers = scoring_map(problem_type, y_reference if y_reference is not None else y_test)
+    reference = y_reference if y_reference is not None else y_test
+    scorers = scoring_map(problem_type, reference, positive)
     result = permutation_importance(
         pipeline,
         X,

@@ -7,9 +7,12 @@ runOnSave = false
 gatherUsageStats = false
 
 [client]
-toolbarMode = "viewer"
 showErrorDetails = false
 
-# Only the accent is fixed; light/dark follows the viewer's system or menu choice.
-[theme]
+# Separate light and dark themes keep Streamlit's System / Light / Dark picker in the
+# top-right menu (a single [theme] section would remove it). Only the accent is changed.
+[theme.light]
 primaryColor = "#2a78d6"
+
+[theme.dark]
+primaryColor = "#3987e5"

@@ -97,3 +97,24 @@ def test_regression_predictor_returns_floats_on_original_scale():
     assert isinstance(out["prediction"], float) and out["probabilities"] is None
     assert 0 < out["prediction"] < 2000  # weekly dengue cases, on the original scale
     assert np.isfinite(predictor.predict_batch(df.head(10))["prediction"].astype(float)).all()
+
+
+def test_pickle_and_joblib_bundles_load_the_same_model(tea):
+    df, run, result, predictor, spec = tea
+    as_joblib = bundle_bytes(result, run, spec, fmt="joblib")
+    as_pickle = bundle_bytes(result, run, spec, fmt="pickle")
+    assert as_joblib[:2] != as_pickle[:2] or len(as_joblib) != len(
+        as_pickle
+    )  # really different files
+    a = load_bundle(as_joblib).predict_batch(df.head(20))["prediction"]
+    b = load_bundle(as_pickle).predict_batch(df.head(20))["prediction"]
+    pd.testing.assert_series_equal(a, b)
+    with pytest.raises(ValueError, match="Unknown bundle format"):
+        bundle_bytes(result, run, spec, fmt="zip")
+
+
+def test_pickle_bundle_from_disk(tea, tmp_path):
+    _, run, result, _, spec = tea
+    path = tmp_path / "model.pkl"
+    path.write_bytes(bundle_bytes(result, run, spec, fmt="pickle"))
+    assert load_bundle(path).class_labels == run.class_labels

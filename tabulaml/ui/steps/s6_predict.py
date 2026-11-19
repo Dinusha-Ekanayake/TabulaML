@@ -143,13 +143,57 @@ def render(state: AppState) -> None:
             "yourself; never open one from an untrusted source.",
             icon="\U0001f512",
         )
-        if st.button("Prepare model bundle", key="prep_bundle"):
-            data = bundle_bytes(result, run, state.input_spec, threshold)
-            st.download_button(
-                "Download .joblib bundle",
-                data,
-                f"tabulaml_{result.key}.joblib",
-                "application/octet-stream",
-                key="dl_bundle",
-            )
+        _downloads(result, run, state, threshold)
     nav_buttons(back=5, next_step=None)
+
+
+LOAD_SNIPPET = """from tabulaml.inference.persistence import load_bundle
+
+predictor = load_bundle("{file}")          # works for .joblib and .pkl
+predictions = predictor.predict_batch(new_data_frame)"""
+
+
+def _downloads(result, run, state: AppState, threshold: float | None) -> None:  # noqa: ANN001
+    """Both formats: .joblib (compressed, scikit-learn convention) and .pkl (standard pickle).
+
+    Files are built once per model and kept for the session, so a download click (which
+    reruns the page) does not make the buttons disappear.
+    """
+    cache_key = f"bundles_{result.key}_{threshold}"
+    if cache_key not in st.session_state:
+        if not st.button("Prepare model files", key="prep_bundle", type="primary"):
+            st.caption(
+                "Builds a .joblib and a .pkl file containing the full pipeline "
+                "(cleaning, preprocessing, model), its settings and the threshold."
+            )
+            return
+        with st.spinner("Packaging the trained pipeline..."):
+            st.session_state[cache_key] = {
+                fmt: bundle_bytes(result, run, state.input_spec, threshold, fmt=fmt)
+                for fmt in ("joblib", "pickle")
+            }
+    files = st.session_state[cache_key]
+    left, right = st.columns(2)
+    left.download_button(
+        f"Download .joblib ({len(files['joblib']) / 1e6:.1f} MB)",
+        files["joblib"],
+        f"tabulaml_{result.key}.joblib",
+        "application/octet-stream",
+        key="dl_bundle_joblib",
+        width="stretch",
+        icon=":material/download:",
+    )
+    right.download_button(
+        f"Download .pkl ({len(files['pickle']) / 1e6:.1f} MB)",
+        files["pickle"],
+        f"tabulaml_{result.key}.pkl",
+        "application/octet-stream",
+        key="dl_bundle_pickle",
+        width="stretch",
+        icon=":material/download:",
+    )
+    st.caption(
+        ".joblib is compressed and the usual format for scikit-learn models; .pkl is "
+        "a standard Python pickle. Both hold the same model."
+    )
+    st.code(LOAD_SNIPPET.format(file=f"tabulaml_{result.key}.joblib"), language="python")

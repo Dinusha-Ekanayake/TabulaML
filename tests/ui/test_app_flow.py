@@ -103,7 +103,8 @@ def test_footer_on_every_step_with_dataset_attribution():
     assert "No dataset loaded" in _footer_html(at) or "no dataset loaded" in _footer_html(at)
     at = _to_step3("regression", "dengue")
     html = _footer_html(at)
-    assert "CC0" in html and "colmozzie" in html and "GitHub repository" in html
+    assert "CC0" in html and "colmozzie" in html and "GitHub" in html
+    assert "&copy;" in html and "Dinusha Ekanayake" in html
 
 
 def test_model_cards_and_selection_bar():

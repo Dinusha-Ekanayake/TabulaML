@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from html import escape
 from pathlib import Path
 
@@ -26,30 +27,50 @@ def _version() -> str:
         return "dev"
 
 
-def footer(state: AppState) -> None:
-    """Persistent footer: app info, attribution for the loaded dataset, tech and privacy."""
+AUTHOR = "Dinusha Ekanayake"
+
+
+def _footer_data(state: AppState) -> str:
     card = state.card
     if card is not None:
         url = escape(card.source_url, quote=True)
-        link = f' (<a href="{url}" target="_blank">source</a>)' if url else ""
-        data = f"<b>Data:</b> {escape(card.title)}{link}. Licence: {escape(card.license)}."
-    elif state.raw_df is not None:  # user-controlled filename: always escape
-        data = (
-            f"<b>Data:</b> your upload ({escape(str(state.filename))}). It stays in this session."
-        )
-    else:
-        data = "<b>Data:</b> no dataset loaded."
-    html = f"""
-<div class="tml-footer">
-  <div><b>TabulaML</b> v{_version()}<br>Generalised preprocessing and ensemble model comparison
-  for tabular data.<br><a href="{REPO_URL}" target="_blank">GitHub repository</a></div>
-  <div>{data}<br>Sample datasets are public Sri Lankan data; please cite the sources shown on
-  each dataset card.</div>
-  <div>Built with Streamlit · scikit-learn · XGBoost · LightGBM · CatBoost<br>
-  Your data is processed only in this session and is not sent to external services.<br>
-  <a href="{REPO_URL}/blob/main/docs/USER_GUIDE.md" target="_blank">User guide</a> ·
-  <a href="{REPO_URL}/blob/main/docs/REPORT.md" target="_blank">Report</a></div>
-</div>"""
+        title = escape(card.title)
+        name = f'<a href="{url}" target="_blank" rel="noopener">{title}</a>' if url else title
+        return f"Data: {name} · {escape(card.license)}"
+    if state.raw_df is not None:  # user-controlled filename: always escaped
+        return f"Data: {escape(str(state.filename))} (stays in this session)"
+    return "No dataset loaded"
+
+
+def _link(href: str, label: str) -> str:
+    return f'<a href="{escape(href, quote=True)}" target="_blank" rel="noopener">{label}</a>'
+
+
+def footer(state: AppState) -> None:
+    """Professional footer fixed to the bottom edge: copyright, version, data attribution
+    (required by CC BY 4.0) and links. Every dynamic value is HTML-escaped."""
+    dot = '<span class="tml-dot">·</span>'
+    privacy = "Your data is processed only in this session and is never sent elsewhere."
+    left = (
+        f"&copy; {datetime.now().year} {escape(AUTHOR)}"
+        f'<span class="tml-dot">|</span>TabulaML'
+        f'<span class="tml-ver">v{escape(_version())}</span>'
+    )
+    right = dot.join(
+        [
+            _link(REPO_URL, "GitHub"),
+            _link(f"{REPO_URL}/blob/main/docs/USER_GUIDE.md", "Guide"),
+            _link(f"{REPO_URL}/blob/main/docs/REPORT.md", "Report"),
+            f'<span title="{privacy}">Privacy</span>',
+        ]
+    )
+    html = (
+        '<footer class="tml-footer" role="contentinfo">'
+        f'<div class="tml-f-left">{left}</div>'
+        f'<div class="tml-f-mid">{_footer_data(state)}</div>'
+        f'<div class="tml-f-right">{right}</div>'
+        "</footer>"
+    )
     st.markdown(html, unsafe_allow_html=True)
 
 

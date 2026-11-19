@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import logging
+import pickle
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
@@ -62,10 +63,17 @@ def bundle_bytes(
     run: TrainingRun,
     input_spec: Sequence[dict],
     threshold: float | None = None,
+    fmt: str = "joblib",
 ) -> bytes:
-    """Serialised bundle for a download button."""
+    """Serialised bundle for a download button: ``fmt`` is "joblib" (compressed, the
+    scikit-learn convention) or "pickle" (standard library, no extra package to load)."""
+    bundle = make_bundle(result, run, input_spec, threshold)
+    if fmt == "pickle":
+        return pickle.dumps(bundle, protocol=pickle.HIGHEST_PROTOCOL)
+    if fmt != "joblib":
+        raise ValueError(f"Unknown bundle format '{fmt}'. Use 'joblib' or 'pickle'.")
     buffer = io.BytesIO()
-    joblib.dump(make_bundle(result, run, input_spec, threshold), buffer, compress=3)
+    joblib.dump(bundle, buffer, compress=3)
     return buffer.getvalue()
 
 
@@ -81,8 +89,8 @@ def save_bundle(
 
 def load_bundle(source: str | Path | bytes) -> Predictor:
     """Load a bundle produced by TabulaML (trusted sources only, see module docstring)."""
-    handle: Any = io.BytesIO(source) if isinstance(source, bytes) else source
-    bundle = joblib.load(handle)
+    raw = source if isinstance(source, bytes) else Path(source).read_bytes()
+    bundle = _deserialise(raw)
     if not isinstance(bundle, dict) or bundle.get("format") != BUNDLE_FORMAT:
         raise ValueError("Not a TabulaML model bundle.")
     missing = [k for k in _REQUIRED if k not in bundle]
@@ -100,3 +108,11 @@ def load_bundle(source: str | Path | bytes) -> Predictor:
         threshold=bundle.get("threshold"),
         positive_index=bundle.get("positive_index"),
     )
+
+
+def _deserialise(raw: bytes) -> Any:
+    """joblib (compressed or not) first; plain pickle as a fallback (trusted files only)."""
+    try:
+        return joblib.load(io.BytesIO(raw))
+    except Exception:  # noqa: BLE001 - try the standard-library format next
+        return pickle.loads(raw)  # noqa: S301 - TabulaML bundles only, see module docstring

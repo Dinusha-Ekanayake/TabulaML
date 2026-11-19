@@ -85,7 +85,7 @@ def _selection_bar(state: AppState) -> None:
     names = {s.key: s.name for s in list_models(state.problem_type)}
     chosen = [names[k] for k in names if st.session_state.get(f"m_{k}")]
     with st.container(border=True):
-        left, b1, b2 = st.columns([6, 1.3, 1])
+        left, b1, b2 = st.columns([4.6, 1.7, 1], vertical_alignment="center")
         if chosen:
             chips = "".join(f'<span class="tml-chip">{n}</span>' for n in chosen)
             left.markdown(f"**{len(chosen)} selected** &nbsp; {chips}", unsafe_allow_html=True)

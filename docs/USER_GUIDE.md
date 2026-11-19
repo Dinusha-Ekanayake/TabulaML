@@ -1,6 +1,6 @@
 # TabulaML user guide
 
-Start the app with `streamlit run app.py`. The sidebar shows the six steps and a **Past runs** list. You can always go back, but changing an earlier choice clears the later steps (the app warns you first), so results never mix settings. **Start over** resets everything. The footer shows the app version, the licence and source of the loaded dataset, and a privacy note.
+Start the app with `streamlit run app.py`. **Light / dark mode:** open the **⋮** menu at the top-right and choose **System**, **Light** or **Dark**. The sidebar shows the six steps and a **Past runs** list. You can always go back, but changing an earlier choice clears the later steps (the app warns you first), so results never mix settings. **Start over** resets everything. The footer shows the app version, the licence and source of the loaded dataset, and a privacy note.
 
 ## 1. Problem type
 Choose **Classification** (predict a category, for example a tea lot's market catalogue or churn Yes/No) or **Regression** (predict a number, for example a tea auction price or weekly dengue cases).
@@ -56,4 +56,4 @@ The test set is **locked** at first, so you pick a model without peeking at it.
 Choose a model (only fully validated ones are listed). A threshold chosen in step 5 is applied.
 - **Single record:** a form filled with typical values. Classification shows class probabilities.
 - **Batch file:** upload a CSV or Excel file. Before scoring, a quality check lists values that could not be parsed, values outside the training range and categories never seen in training. Download the predictions.
-- **Download model:** a `.joblib` bundle with the pipeline, parameters and threshold. Only load bundles you created yourself.
+- **Download model:** click **Prepare model files**, then download the **.joblib** (compressed, the usual scikit-learn format) or the **.pkl** (standard Python pickle) file. Both contain the full pipeline, its parameters and the threshold, and both load with `load_bundle(path)`. Only load files you created yourself.

@@ -7,7 +7,7 @@ The repository is ready to deploy as-is: `app.py` sits at the root next to the `
 |---|---|
 | `requirements.txt` | Runtime packages with exact, tested versions (scikit-learn stays at 1.5.2) |
 | `packages.txt` | `libgomp1`, the OpenMP runtime LightGBM needs on Linux |
-| `.streamlit/config.toml` | Upload limit (200 MB), no usage stats, accent colour; light/dark follows the viewer |
+| `.streamlit/config.toml` | Upload limit (200 MB), no usage stats, and the accent colour defined separately for `[theme.light]` and `[theme.dark]`. A single `[theme]` section would hide Streamlit's System / Light / Dark picker. |
 | `.streamlit/secrets.toml.example` | Shows the optional `TABULAML_CLOUD = "1"` switch |
 
 ## Steps

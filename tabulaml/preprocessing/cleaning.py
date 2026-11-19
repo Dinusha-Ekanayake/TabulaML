@@ -22,7 +22,7 @@ PLAN_BOOLEAN = "boolean"
 PLAN_DATETIME = "datetime"
 PLAN_CATEGORY = "category"
 
-_CURRENCY_NOISE = re.compile(r"(?i)rs\.?|lkr|usd|\$|€|£|%|,|\s")
+_CURRENCY_NOISE = re.compile(r"(?i)rs\.?|lkr|usd|\$|â‚¬|Â£|%|,|\s")
 _BOOL_TOKENS = frozenset(TRUE_TOKENS) | frozenset(FALSE_TOKENS)
 _NUMERIC_PARSE_RATIO = 0.95
 _DATETIME_PARSE_RATIO = 0.90
@@ -107,7 +107,7 @@ def _to_boolean(s: pd.Series, tokens: tuple[str, ...]) -> pd.Series:
     return lower.map(mapping).astype("float64")
 
 
-def _to_datetime(s: pd.Series, tokens: tuple[str, ...]) -> pd.Series:
+def parse_datetime(s: pd.Series, tokens: tuple[str, ...]) -> pd.Series:
     """Parse to timezone-naive datetime64; unparseable values become NaT."""
     if is_datetime64_any_dtype(s):
         return s.dt.tz_convert(None) if s.dt.tz is not None else s
@@ -166,7 +166,7 @@ class DataCleaner(BaseEstimator, TransformerMixin):
         if plan == PLAN_BOOLEAN:
             return _to_boolean(s, self.missing_tokens)
         if plan == PLAN_DATETIME:
-            return _to_datetime(s, self.missing_tokens)
+            return parse_datetime(s, self.missing_tokens)
         return self._clean_category(s, col)
 
     def _clean_category(self, s: pd.Series, col: str) -> pd.Series:

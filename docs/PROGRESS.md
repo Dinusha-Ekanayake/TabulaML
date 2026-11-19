@@ -5,7 +5,7 @@
 | 0 | Scaffold & environment | Sonnet | ☑ | venv at .venv, sklearn 1.5.2, ruff clean, Graphify graph built |
 | 1 | Core types, loader, sample datasets | Sonnet | ☑ | 27 tests, 95% coverage; churn 4999x24, LOS 2999x22 |
 | 2 | Cleaning, profiling, validation | Sonnet + ⚑ Opus review | ☑ reviewed | 77 tests, 95% coverage; Opus review fixed 8 defects (see below) |
-| 3 | Preprocessing engine | Sonnet + ⚑ Opus review | ☐ | |
+| 3 | Preprocessing engine | Opus | ☑ | 108 tests; leakage spy test; 6 datasets x 2 profiles generalisation test |
 | 4 | Model registry, ensembles, hybrid | Sonnet | ☐ | R1 compatibility gate |
 | 5 | Training & evaluation engine | Sonnet + ⚑ Opus review | ☐ | |
 | 6 | Inference & persistence | Sonnet | ☐ | |
@@ -30,6 +30,9 @@
   Also: `TrainingRun.leaderboard()` no longer raises KeyError when every model failed.
 
 ## Contract changes log
+- Phase 3: `build_feature_transformer` outputs **numpy** (not pandas): XGBoost rejects feature names containing `[`, `]`, `<`, which one-hot names from user data can contain. `ct.get_feature_names_out()` still works.
+- Phase 3: `recommend_config(..., y=None)` takes the raw target for imbalance/target-transform decisions. Numeric "auto" choices (skew, clipping, scaling) and low-cardinality encoding stay "auto" and are resolved per profile by the builder, with data-dependent parts learned in `fit`. High-cardinality columns get explicit `encoding="target"`.
+- Phase 3: added `describe_pipeline` and `column_steps` (builder); `parse_datetime` is public in cleaning.
 - Review: added `clean_target(s, regression) -> pd.Series` to `preprocessing/cleaning.py`. **Phase 5 trainer must use it** to build `y` so validation and training see identical classes.
 - Phase 1: `SAMPLE_REGISTRY` constant became the function `_registry()` in `data/samples.py` (discovers `data/samples/*.json`); public API `list_samples`/`load_sample` unchanged.
 - Phase 1: `TrainingRun.notes: tuple[str, ...] = ()` added; `ModelResult`/`TrainingRun` runtime fields are excluded from repr/compare. `cv_scores` hold display-oriented (positive) values; `LOWER_IS_BETTER` lives in `core/types.py`.

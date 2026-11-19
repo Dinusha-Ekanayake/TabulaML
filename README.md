@@ -14,15 +14,20 @@ TabulaML takes you from a raw table to a trained, compared and usable model in s
 The preprocessing engine has no dataset-specific code. It reads the schema of whatever table you load (numeric, categorical, boolean, datetime, identifier, constant, free text), cleans common problems (`"Rs. 1,250"`, `?`/`NA` tokens, `Yes`/`y`/`no` booleans, spelling variants, mixed date formats) and builds a separate pipeline for tree models and for scale-sensitive models. Every learned step is fitted on training folds only.
 
 ## Datasets
+Only **publicly available, genuine Sri Lankan datasets** are used. There is no synthetic data.
 
 | Key | What | Task | Source and licence |
 |---|---|---|---|
-| `lk_colombo_dengue` | Weekly notified dengue cases in Colombo with weather, 2009-2014 (279 weeks) | Regression | **Real, public**: R package [colmozzie](https://github.com/thiyangt/colmozzie) (Thiyanga Talagala), compiled from the Epidemiology Unit's Weekly Epidemiological Reports. CC0 |
-| `lk_telco_churn` | First-month usage of 15,000 anonymised customers of a large Sri Lankan operator, 2023 | Classification | **Real, public**: [Kaggle: Real World Customer Churn Dataset in Telco Domain](https://www.kaggle.com/datasets/lasaljaywardena/real-world-churn) (Lasal Jayawardena). CC0. *Fetched on demand, see below* |
-| `lk_synthetic_telecom_churn` | Messy synthetic telecom customers | Classification | Synthetic Sri Lankan-context data (`scripts/generate_samples.py`). Stress-tests preprocessing |
-| `lk_synthetic_patient_los` | Messy synthetic hospital admissions, length of stay | Regression | Synthetic Sri Lankan-context data. Stress-tests preprocessing |
+| `lk_tea_auction_catalogue` | 12,233 Colombo Tea Auction price quotes (Nov 2023 - Mar 2026). Predict the market catalogue: Low Grown, High Grown, Dust or Off-Grade | Classification (4 classes) | [Hugging Face: colombo-tea-auction-prices/cta-price-prediction](https://huggingface.co/datasets/colombo-tea-auction-prices/cta-price-prediction), from Forbes & Walker broker reports + Open-Meteo weather. **CC BY 4.0** (attribution required) |
+| `lk_tea_auction_price` | Same table. Predict the mid auction price (LKR/kg) | Regression | Same source, CC BY 4.0 |
+| `lk_colombo_dengue` | Weekly notified dengue cases in Colombo with weather, 2009-2014 (279 weeks) | Regression | R package [colmozzie](https://github.com/thiyangt/colmozzie) (Thiyanga Talagala), from the Epidemiology Unit's Weekly Epidemiological Reports. **CC0** |
+| `lk_telco_churn` | First-month usage of 15,000 anonymised customers of a large Sri Lankan operator, 2023 | Classification | [Kaggle: Real World Customer Churn Dataset in Telco Domain](https://www.kaggle.com/datasets/lasaljaywardena/real-world-churn) (Lasal Jayawardena). **CC0**. *Fetched on demand (needs a free Kaggle login), see below* |
 
-Every sample has a dataset card (provenance, licence, period, feature dictionary, target definition, limitations), which is shown in the app. The synthetic samples carry a "Synthetic" badge, and each contains one deliberately planted leakage column that the app detects and excludes. The real telco builder keeps one post-outcome column (`active_days_61_90_any_service`) as a real-world leakage example.
+Every sample has a dataset card (provenance, licence, period, feature dictionary, target definition, limitations), which is shown in the app. Two of the datasets contain real leakage columns, which the app detects and excludes:
+- In the tea catalogue task, `category`: every tea category is listed in exactly one catalogue.
+- In the telco data, `active_days_61_90_any_service`: it is observed after the churn window.
+
+The bundled files can be rebuilt from their pinned public sources with `python scripts/fetch_public_datasets.py public`.
 
 ### Fetching the real telco dataset
 Kaggle requires a free account to download.
@@ -53,7 +58,7 @@ python scripts/benchmark.py --quick
 ```
 The suite includes:
 - a **leakage spy test**: learned steps never see validation or test rows;
-- a **generalization test**: one unchanged code path trains and predicts on sklearn datasets, the Sri Lankan samples and seeded random mixed-type tables;
+- a **generalization test**: one unchanged code path trains and predicts on sklearn datasets, the Sri Lankan datasets and seeded random mixed-type tables;
 - an **AppTest** that clicks through the whole wizard.
 
 ## Research benchmark

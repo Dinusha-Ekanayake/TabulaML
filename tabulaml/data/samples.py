@@ -61,9 +61,15 @@ def _registry(samples_dir: Path = SAMPLES_DIR) -> dict[str, Path]:
     return {p.stem: p for p in sorted(samples_dir.glob("*.json"))}
 
 
+def _csv_path(card_path: Path) -> Path:
+    """A card may name a shared data file (``"file"``), e.g. two tasks on one table."""
+    raw = json.loads(card_path.read_text(encoding="utf-8"))
+    return card_path.parent / raw.get("file", f"{card_path.stem}.csv")
+
+
 def list_samples(problem_type: ProblemType | None = None) -> list[DatasetCard]:
     """Cards of samples whose CSV is present (fetch-on-demand datasets appear once fetched)."""
-    cards = [_card_from_json(p) for p in _registry().values() if p.with_suffix(".csv").exists()]
+    cards = [_card_from_json(p) for p in _registry().values() if _csv_path(p).exists()]
     if problem_type is None:
         return cards
     return [c for c in cards if c.problem_type == problem_type]
@@ -74,7 +80,7 @@ def load_sample(key: str) -> tuple[pd.DataFrame, DatasetCard]:
     if key not in registry:
         raise KeyError(f"Unknown sample dataset '{key}'. Available: {sorted(registry)}")
     card = _card_from_json(registry[key])
-    csv_path = registry[key].with_suffix(".csv")
+    csv_path = _csv_path(registry[key])
     if not csv_path.exists():
         raise FileNotFoundError(
             f"Sample '{key}' has not been downloaded yet. "

@@ -108,25 +108,23 @@ See §6.
 | P14 | Unsupported input | Clear errors for: no usable features, a target that does not suit the problem type, a file too large, fewer than 30 rows after cleaning, or all features being text or image paths. |
 | P15 | Explainability | Automatic mode outputs a human-readable explanation for every decision (for example, "`monthly_charge`: 4.1 % missing, skew 2.3, so median imputation plus Yeo-Johnson (scale-sensitive models only)"). |
 
-## 7. Sample datasets (local, Sri Lankan)
+## 7. Sample datasets (local, Sri Lankan, publicly available)
 
-**Genuine, publicly available Sri Lankan datasets** (used for the main results):
+Only genuine, publicly available datasets are used, as the lecture specified. No synthetic data is shipped.
 
 | Key | Task | Rows | Target | Source and licence |
 |---|---|---|---|---|
-| `lk_colombo_dengue` | Regression | 279 weeks | `dengue_cases` | R package *colmozzie* (Thiyanga Talagala), compiled from the Weekly Epidemiological Reports of the Epidemiology Unit, Ministry of Health, Sri Lanka; weather variables per week. CC0. Bundled. |
-| `lk_telco_churn` | Binary classification | 15,000 (stratified sample of 65,005) | `churn` (~23 % Yes) | Kaggle "Real World Customer Churn Dataset in Telco Domain" (Lasal Jayawardena): anonymised usage of customers of a large Sri Lankan operator, Jan-Mar 2023. CC0. Built locally by `scripts/fetch_public_datasets.py` because Kaggle needs a free login. |
+| `lk_tea_auction_catalogue` | Multiclass classification | 12,233 | `catalogue` (Low Grown / High Grown / Dust / Off-Grade) | Colombo Tea Auction price records from 105 weekly Forbes & Walker broker reports (Nov 2023 - Mar 2026) with Open-Meteo weather; Hugging Face `colombo-tea-auction-prices/cta-price-prediction`. CC BY 4.0. Bundled. |
+| `lk_tea_auction_price` | Regression | 12,233 (3.6 % without price) | `price_mid_lkr` | Same file. |
+| `lk_colombo_dengue` | Regression | 279 weeks | `dengue_cases` | R package *colmozzie* (T. Talagala), from the Epidemiology Unit's Weekly Epidemiological Reports, with weather. CC0. Bundled. |
+| `lk_telco_churn` | Binary classification | 15,000 (stratified sample of 65,005) | `churn` (~23 % Yes) | Kaggle "Real World Customer Churn Dataset in Telco Domain" (L. Jayawardena), a large Sri Lankan operator, Jan-Mar 2023. CC0. Built locally by `scripts/fetch_public_datasets.py` because Kaggle needs a free login. |
 
-**Synthetic Sri Lankan-context datasets** (preprocessing stress tests, always labelled "Synthetic"):
+These datasets contain genuine leakage and quality issues that the engine must handle:
+- In the tea catalogue task, `category` maps one-to-one onto the catalogue.
+- In the telco data, a usage column is observed after the churn window.
+- In the tea data, prices are missing and many grade/tier values are `unknown`.
 
-| Key | Task | Rows | Target | Purpose |
-|---|---|---|---|---|
-| `lk_synthetic_telecom_churn` | Binary classification | ~5,000 | `churned` | Mixed types and deliberate messiness |
-| `lk_synthetic_patient_los` | Regression | ~3,000 | `length_of_stay_days` | Right-skewed target (log1p), RF + ANN hybrid |
-
-The synthetic data is deliberately messy so the preprocessing engine has something to prove: missing values, placeholder tokens, `"Rs. 1,250"` strings, inconsistent case and whitespace, `Y/yes/No` booleans, outliers, duplicate rows, an ID column, a date column and **one planted leakage column per dataset** (`disconnection_date` / `total_bill_lkr`). The real telco data keeps one post-outcome column (`active_days_61_90_any_service`) as a real-world leakage example. The leakage detector flags all three.
-
-**Adding another dataset:** drop a CSV and a dataset-card JSON into `data/samples/`. It is discovered automatically; no code changes.
+Bundled files are rebuilt from pinned public sources with `python scripts/fetch_public_datasets.py public`. **Adding another dataset:** drop a CSV and a dataset-card JSON into `data/samples/` (a card may point to a shared `"file"`). It is discovered automatically; no code changes.
 
 Every sample has a **dataset card** shown in the app: source and provenance, Sri Lankan context, licence, collection period, feature dictionary with units, target definition, known limitations, anonymisation notes, and columns recommended for exclusion.
 

@@ -1,7 +1,9 @@
 """Fetch and prepare the PUBLIC, genuine Sri Lankan sample datasets.
 
 Usage:
+    python scripts/fetch_public_datasets.py public   # dengue + tea (no login needed)
     python scripts/fetch_public_datasets.py dengue
+    python scripts/fetch_public_datasets.py tea
     python scripts/fetch_public_datasets.py telco --kaggle-dir PATH   # folder with main.csv,
                                                                        # train_cxid.csv, test_cxid.csv
     python scripts/fetch_public_datasets.py telco                     # downloads via kagglehub
@@ -14,6 +16,12 @@ lk_colombo_dengue  (regression, CC0)
     2008-W52 to 2014-W21 (279 weeks). Source: R package 'colmozzie' by Thiyanga Talagala,
     https://github.com/thiyangt/colmozzie (CC0), compiled from the Weekly Epidemiological
     Reports of the Epidemiology Unit, Ministry of Health, Sri Lanka.
+
+lk_tea_auction_catalogue (classification) and lk_tea_auction_price (regression), CC BY 4.0
+    12,233 Colombo Tea Auction price records from 105 weekly Forbes & Walker broker reports
+    (Nov 2023 - Mar 2026) with lagged Open-Meteo weather. Source: Hugging Face dataset
+    colombo-tea-auction-prices/cta-price-prediction (paper: "Forecasting Weather-Driven Price
+    Dynamics Across Sri Lankan Tea Market Catalogues", MERCon 2026). Both tasks share one file.
 
 lk_telco_churn  (classification, CC0)
     "Real World Customer Churn Dataset in Telco Domain" by Lasal Jayawardena,
@@ -39,6 +47,12 @@ COLMOZZIE_SHA = "c964aa4b6ac79c7536dbde16c9b9a3a8d34f6909"
 COLMOZZIE_URL = (
     f"https://raw.githubusercontent.com/thiyangt/colmozzie/{COLMOZZIE_SHA}/data-raw/dengColombo.csv"
 )
+TEA_REVISION = "a671701409e385808823cc7d3b183b12893ea401"
+TEA_URL = (
+    "https://huggingface.co/datasets/colombo-tea-auction-prices/cta-price-prediction/"
+    f"resolve/{TEA_REVISION}/colombo_tea_auction_dataset.csv"
+)
+TEA_FILE = "lk_tea_auction.csv"
 TELCO_SAMPLE_ROWS = 15_000  # stratified sample keeps the file small and under the cell limit
 SEED = 42
 
@@ -48,6 +62,101 @@ def _write(df: pd.DataFrame, card: dict) -> None:
     df.to_csv(OUT / f"{card['key']}.csv", index=False)
     (OUT / f"{card['key']}.json").write_text(json.dumps(card, indent=2), encoding="utf-8")
     print(f"wrote {card['key']}: {df.shape}")
+
+
+def _download_csv(url: str) -> pd.DataFrame:
+    with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310 - fixed, pinned URLs
+        return pd.read_csv(io.BytesIO(resp.read()))
+
+
+# --------------------------------------------------------------------------- tea auction
+
+TEA_FEATURES = {
+    "sale_id": "Weekly auction sale identifier (e.g. SALE_2023_42)",
+    "catalogue": "Market catalogue: low_grown, high_grown, dust or off_grade",
+    "category": "Tea category within the catalogue (e.g. bop, fbop, pekoe)",
+    "elevation": "Elevation group (low_grown, high_grown, low, medium, high)",
+    "segment": "Market segment (e.g. best_western, best_uva; often 'unknown')",
+    "grade": "Leaf grade (e.g. bop, bopf, op; often 'unknown')",
+    "tier": "Quality tier (select_best, best, below_best, others; often 'unknown')",
+    "price_mid_lkr": "Mid auction price in LKR per kg ((low + high) / 2)",
+    "region": "Growing region used for the weather join",
+    "text_crop_change": "Crop intake direction parsed from the broker report text",
+    "text_keywords": "Weather keywords parsed from the broker report text",
+    "temperature_2m_mean_mean": "Mean temperature in the auction week (C)",
+    "precipitation_sum_total_lag1": "Total rainfall 1 week before the auction (mm)",
+    "sunshine_duration_total_lag1": "Total sunshine 1 week before (seconds)",
+    "temperature_2m_mean_mean_lag1": "Mean temperature 1 week before (C)",
+    "precipitation_sum_total_lag2": "Total rainfall 2 weeks before (mm)",
+    "sunshine_duration_total_lag2": "Total sunshine 2 weeks before (seconds)",
+    "temperature_2m_mean_mean_lag2": "Mean temperature 2 weeks before (C)",
+    "precipitation_sum_total_lag3": "Total rainfall 3 weeks before (mm)",
+    "sunshine_duration_total_lag3": "Total sunshine 3 weeks before (seconds)",
+    "temperature_2m_mean_mean_lag3": "Mean temperature 3 weeks before (C)",
+    "sale_number": "Sale number within the year",
+    "sale_year": "Sale year",
+    "sale_date_raw": "Auction date as printed in the report (free text)",
+    "avg_weather_severity": "Composite weather severity score from the report text",
+    "fx_usd": "USD/LKR exchange rate",
+}
+TEA_COMMON = {
+    "provenance": "Public dataset: Hugging Face 'colombo-tea-auction-prices/cta-price-prediction' "
+    f"(revision {TEA_REVISION[:7]}), extracted from 105 weekly Forbes & Walker Tea Brokers "
+    "reports, with Open-Meteo weather. Paper: 'Forecasting Weather-Driven Price Dynamics "
+    "Across Sri Lankan Tea Market Catalogues' (MERCon 2026).",
+    "is_synthetic": False,
+    "file": TEA_FILE,
+    "context": "Genuine Sri Lankan market data: the Colombo Tea Auction, one of the world's "
+    "largest tea auctions, with weather for the growing regions.",
+    "license": "CC-BY-4.0 (attribution required)",
+    "collection_period": "November 2023 to March 2026 (105 weekly sales)",
+    "features": TEA_FEATURES,
+    "anonymisation": "Market prices only; no personal data.",
+}
+TEA_CATALOGUE_CARD = {
+    "key": "lk_tea_auction_catalogue",
+    "title": "Colombo Tea Auction: market catalogue (real, public)",
+    "problem_type": "classification",
+    "target": "catalogue",
+    "description": "One row per auction price quote. Predict which market catalogue (Low Grown, "
+    "High Grown, Dust or Off-Grade) a lot belongs to from its price, grade, tier, region, "
+    "exchange rate and weather.",
+    "target_definition": "catalogue = the broker report's market catalogue for the lot.",
+    "known_limitations": [
+        "'category' determines the catalogue almost exactly (each category is listed in one "
+        "catalogue), so TabulaML flags and excludes it as leakage.",
+        "Many 'unknown' values in grade, tier and segment where the reports do not state them.",
+        "Rows from the same weekly sale are correlated; random cross-validation is optimistic.",
+    ],
+    "recommended_exclusions": ["category"],
+    **TEA_COMMON,
+}
+TEA_PRICE_CARD = {
+    "key": "lk_tea_auction_price",
+    "title": "Colombo Tea Auction: price in LKR (real, public)",
+    "problem_type": "regression",
+    "target": "price_mid_lkr",
+    "description": "One row per auction price quote. Predict the mid auction price (LKR/kg) "
+    "from catalogue, grade, tier, region, exchange rate and lagged weather.",
+    "target_definition": "price_mid_lkr = (low price + high price) / 2 for the quote, in LKR "
+    "per kg; 3.6% of rows have no price and are dropped.",
+    "known_limitations": [
+        "Rows from the same weekly sale are correlated; random cross-validation is optimistic "
+        "compared with forecasting the next week.",
+        "Many 'unknown' values in grade, tier and segment.",
+    ],
+    "recommended_exclusions": [],
+    **TEA_COMMON,
+}
+
+
+def fetch_tea() -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    df = _download_csv(TEA_URL)
+    df.to_csv(OUT / TEA_FILE, index=False)
+    for card in (TEA_CATALOGUE_CARD, TEA_PRICE_CARD):
+        (OUT / f"{card['key']}.json").write_text(json.dumps(card, indent=2), encoding="utf-8")
+    print(f"wrote {TEA_FILE}: {df.shape} (+ 2 dataset cards)")
 
 
 # --------------------------------------------------------------------------- dengue
@@ -125,9 +234,7 @@ DENGUE_CARD = {
 
 
 def fetch_dengue() -> None:
-    with urllib.request.urlopen(COLMOZZIE_URL, timeout=60) as resp:  # noqa: S310 - fixed URL
-        raw = pd.read_csv(io.BytesIO(resp.read()))
-    _write(build_dengue(raw), DENGUE_CARD)
+    _write(build_dengue(_download_csv(COLMOZZIE_URL)), DENGUE_CARD)
 
 
 # --------------------------------------------------------------------------- telco
@@ -245,10 +352,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument("dataset", choices=["dengue", "telco", "all"])
+    parser.add_argument("dataset", choices=["dengue", "tea", "telco", "public", "all"])
     parser.add_argument("--kaggle-dir", help="folder containing the extracted Kaggle files")
     args = parser.parse_args()
-    if args.dataset in ("dengue", "all"):
+    if args.dataset in ("tea", "public", "all"):
+        fetch_tea()
+    if args.dataset in ("dengue", "public", "all"):
         fetch_dengue()
     if args.dataset in ("telco", "all"):
         fetch_telco(args.kaggle_dir)

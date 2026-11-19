@@ -64,22 +64,29 @@ def test_suggest_problem_type(regression_df, messy_df):
 
 
 @pytest.mark.parametrize(
-    ("key", "leak", "safe"),
+    ("key", "leaks", "safe"),
     [
-        ("lk_synthetic_telecom_churn", "disconnection_date", ["tenure_months", "age", "district"]),
-        (
-            "lk_synthetic_patient_los",
-            "total_bill_lkr",
-            ["age", "diagnosis_group", "platelet_count_k"],
-        ),
+        # each tea 'category' is listed in exactly one catalogue: a genuine structural leak
+        ("lk_tea_auction_catalogue", {"category"}, ["price_mid_lkr", "fx_usd", "region", "tier"]),
+        ("lk_tea_auction_price", set(), ["catalogue", "grade", "fx_usd"]),
+        ("lk_colombo_dengue", set(), ["cases_last_week", "rainfall_mm", "week"]),
     ],
 )
-def test_planted_leakage_is_flagged_and_safe_columns_are_not(key, leak, safe):
+def test_leakage_on_public_samples(key, leaks, safe):
     df, card = load_sample(key)
-    issues = detect_leakage(clean_frame(df), card.target, card.problem_type)
-    flagged = {i.column for i in issues}
-    assert leak in flagged
+    flagged = {i.column for i in detect_leakage(clean_frame(df), card.target, card.problem_type)}
+    assert leaks <= flagged
     assert not flagged & set(safe)
+
+
+def test_post_outcome_missingness_leak_is_flagged():
+    """A column filled only after the outcome (e.g. a disconnection date) leaks via missingness."""
+    rng = np.random.default_rng(3)
+    y = np.where(rng.random(400) < 0.25, "Yes", "No")
+    dates = pd.Series(pd.date_range("2024-01-01", periods=400)).astype(str).where(y == "Yes")
+    df = pd.DataFrame({"tenure": rng.integers(0, 60, 400), "closed_on": dates, "y": y})
+    flagged = {i.column for i in detect_leakage(clean_frame(df), "y", CLS)}
+    assert flagged == {"closed_on"}
 
 
 def test_identical_and_categorical_mapping_leaks():

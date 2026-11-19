@@ -3,7 +3,7 @@
 | Phase | Title | Model | Status | Notes |
 |---|---|---|---|---|
 | 0 | Scaffold & environment | Sonnet | done | venv at .venv, sklearn 1.5.2, ruff clean, Graphify graph built |
-| 1 | Core types, loader, sample datasets | Sonnet | done | churn 4999x24, LOS 2999x22 (synthetic) |
+| 1 | Core types, loader, sample datasets | Sonnet | done | synthetic samples built here were later removed (public data only) |
 | 2 | Cleaning, profiling, validation | Sonnet + Opus review | done, reviewed | Opus review fixed 8 defects (see below) |
 | 3 | Preprocessing engine | Opus | done | leakage spy test; 6 datasets x 2 profiles generalisation test |
 | - | Public Sri Lankan datasets | Opus | done | colmozzie dengue bundled (CC0); Kaggle telco builder (needs Kaggle login) |
@@ -15,13 +15,13 @@
 | 9 | Generalization proof & benchmark | Opus | done | 12 datasets incl. 6 random chaos frames; repeated-CV benchmark + Wilcoxon + ablation |
 | 10 | Docs, report, polish | Opus | done | README, USER_GUIDE, REPORT with benchmark results; 198 tests, 96% coverage |
 
-## Datasets
-| Key | Real? | Task | Licence | Status |
+## Datasets (public only; synthetic samples removed at the user's request)
+| Key | Source | Task | Licence | Status |
 |---|---|---|---|---|
-| `lk_colombo_dengue` | Real, public (colmozzie, Epidemiology Unit weekly reports) | Regression | CC0 | bundled |
-| `lk_telco_churn` | Real, public (Kaggle, Lasal Jayawardena, Sri Lankan operator 2023) | Classification | CC0 | run `python scripts/fetch_public_datasets.py telco` after a Kaggle login |
-| `lk_synthetic_telecom_churn` | Synthetic Sri Lankan-context | Classification | CC0 | bundled (preprocessing stress test) |
-| `lk_synthetic_patient_los` | Synthetic Sri Lankan-context | Regression | CC0 | bundled (preprocessing stress test) |
+| `lk_tea_auction_catalogue` | Colombo Tea Auction (HF colombo-tea-auction-prices/cta-price-prediction) | Classification, 4 classes | CC BY 4.0 | bundled |
+| `lk_tea_auction_price` | same file | Regression | CC BY 4.0 | bundled |
+| `lk_colombo_dengue` | colmozzie (Epidemiology Unit weekly reports) | Regression | CC0 | bundled |
+| `lk_telco_churn` | Kaggle, Lasal Jayawardena, Sri Lankan operator 2023 | Classification | CC0 | run `python scripts/fetch_public_datasets.py telco` after a Kaggle login |
 
 ## Open decisions / blockers
 - [ ] Fetch the real telco dataset (needs a free Kaggle account): set `KAGGLE_USERNAME`/`KAGGLE_KEY` or download the zip and pass `--kaggle-dir`.

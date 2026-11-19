@@ -38,9 +38,9 @@ def _to_step3(problem: str, sample_title_part: str) -> AppTest:
 
 
 def test_classification_flow_end_to_end():
-    at = _to_step3("classification", "synthetic")
+    at = _to_step3("classification", "Tea Auction")
     warnings = " ".join(str(w.value) for w in at.warning)
-    assert "disconnection_date" in warnings  # planted leak surfaced in the quality report
+    assert "category" in warnings  # real structural leak surfaced in the quality report
     at = _click(at, "next_4")
     for key in ("m_logreg", "m_rf"):
         at.checkbox(key=key).check()
@@ -73,7 +73,7 @@ def test_regression_flow_on_real_dengue_data():
 
 
 def test_changing_problem_type_resets_downstream_state():
-    at = _to_step3("classification", "synthetic")
+    at = _to_step3("classification", "Tea Auction")
     assert at.session_state["tml_state"].config is not None
     at = _click(at, "nav_1")
     at = _click(at, "choose_regression")

@@ -38,16 +38,16 @@ def _injected():
 
 
 def _datasets():
-    churn, churn_card = load_sample("lk_synthetic_telecom_churn")
-    los, los_card = load_sample("lk_synthetic_patient_los")
-    return [
+    out = [
         ("breast_cancer", _sklearn(load_breast_cancer), "y", CLS),
         ("wine_multiclass", _sklearn(load_wine), "y", CLS),
         ("diabetes", _sklearn(load_diabetes), "y", REG),
         ("injected", _injected(), "y", CLS),
-        ("lk_synthetic_telecom_churn", churn, churn_card.target, CLS),
-        ("lk_synthetic_patient_los", los, los_card.target, REG),
     ]
+    for key in ("lk_tea_auction_catalogue", "lk_tea_auction_price", "lk_colombo_dengue"):
+        df, card = load_sample(key)
+        out.append((key, df, card.target, card.problem_type))
+    return out
 
 
 @pytest.mark.parametrize("profile", [ModelProfile.TREE, ModelProfile.SCALE_SENSITIVE])

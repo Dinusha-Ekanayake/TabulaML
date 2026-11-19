@@ -132,8 +132,8 @@ TabulaML/
 │       ├── state.py               # session-state helpers, step gating
 │       ├── components.py          # shared widgets (stepper, dataset card, metric tiles)
 │       └── steps/ s1_problem.py s2_data.py s3_preprocess.py s4_models.py s5_results.py s6_predict.py
-├── data/samples/                  # lk_telecom_churn.csv/.json, lk_patient_los.csv/.json
-├── scripts/ generate_samples.py  benchmark.py
+├── data/samples/                  # public data: lk_tea_auction.csv (+2 cards), lk_colombo_dengue.csv/.json
+├── scripts/ fetch_public_datasets.py  benchmark.py
 ├── tests/ unit/ integration/ ui/  conftest.py
 ├── reports/                       # benchmark outputs, figures (committed)
 ├── artifacts/                     # saved bundles (git-ignored)

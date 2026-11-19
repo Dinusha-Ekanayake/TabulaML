@@ -30,58 +30,58 @@ def _trained(key, model="rf"):
 
 
 @pytest.fixture(scope="module")
-def churn():
-    return _trained("lk_synthetic_telecom_churn", "logreg")
+def tea():
+    return _trained("lk_tea_auction_catalogue", "logreg")
 
 
-def test_input_spec_has_defaults(churn):
-    _, run, _, predictor, _ = churn
+def test_input_spec_has_defaults(tea):
+    _, run, _, predictor, _ = tea
     spec = {s["name"]: s for s in predictor.input_spec()}
     assert set(spec) == set(run.feature_columns)
-    assert spec["tenure_months"]["type"] == "numeric" and spec["tenure_months"]["default"] >= 0
-    assert "Colombo" in spec["district"]["options"]
-    assert spec["has_idd_pack"]["type"] == "boolean"
+    assert spec["fx_usd"]["type"] == "numeric" and spec["fx_usd"]["default"] > 200
+    assert "nuwara_eliya" in spec["region"]["options"]
+    assert spec["tier"]["type"] == "categorical"
 
 
-def test_single_prediction_with_unseen_category_and_missing_value(churn):
-    _, _, _, predictor, spec = churn
+def test_single_prediction_with_unseen_category_and_missing_value(tea):
+    _, _, _, predictor, spec = tea
     record = {s["name"]: s["default"] for s in spec}
-    record["district"] = "Atlantis"
-    record["age"] = None
+    record["region"] = "Atlantis"
+    record["fx_usd"] = None
     out = predictor.predict_one(record)
-    assert out["prediction"] in ("Yes", "No")
+    assert out["prediction"] in {"dust", "high_grown", "low_grown", "off_grade"}
     assert sum(out["probabilities"].values()) == pytest.approx(1.0)
 
 
-def test_batch_with_shuffled_and_extra_columns(churn):
-    df, run, _, predictor, _ = churn
+def test_batch_with_shuffled_and_extra_columns(tea):
+    df, run, _, predictor, _ = tea
     batch = df.head(20).copy()
     batch = batch[list(reversed(batch.columns))].assign(junk=1)
     issues = {i.code for i in predictor.validate_input(batch)}
     assert "extra_columns" in issues
     out = predictor.predict_batch(batch)
-    assert {"prediction", "proba_Yes", "proba_No"} <= set(out.columns)
+    assert {"prediction", "proba_dust", "proba_low_grown"} <= set(out.columns)
     assert len(out) == 20 and "prediction" not in batch.columns  # input not mutated
 
 
-def test_batch_missing_column_is_an_error(churn):
-    df, _, _, predictor, _ = churn
-    bad = df.head(5).drop(columns=["tenure_months"])
+def test_batch_missing_column_is_an_error(tea):
+    df, _, _, predictor, _ = tea
+    bad = df.head(5).drop(columns=["fx_usd"])
     assert "missing_columns" in {i.code for i in predictor.validate_input(bad)}
-    with pytest.raises(ValueError, match="tenure_months"):
+    with pytest.raises(ValueError, match="fx_usd"):
         predictor.predict_batch(bad)
     assert "empty_input" in {i.code for i in predictor.validate_input(df.head(0))}
 
 
-def test_save_load_roundtrip_gives_identical_predictions(churn, tmp_path):
-    df, run, result, predictor, spec = churn
+def test_save_load_roundtrip_gives_identical_predictions(tea, tmp_path):
+    df, run, result, predictor, spec = tea
     path = save_bundle(tmp_path, result, run, spec)
     loaded = load_bundle(path)
     a = predictor.predict_batch(df.head(30))["prediction"]
     b = loaded.predict_batch(df.head(30))["prediction"]
     pd.testing.assert_series_equal(a, b)
     from_bytes = load_bundle(bundle_bytes(result, run, spec))
-    assert from_bytes.class_labels == ("No", "Yes")
+    assert from_bytes.class_labels == ("dust", "high_grown", "low_grown", "off_grade")
 
 
 def test_load_rejects_foreign_pickles(tmp_path):
@@ -92,8 +92,8 @@ def test_load_rejects_foreign_pickles(tmp_path):
 
 
 def test_regression_predictor_returns_floats_on_original_scale():
-    df, _, _, predictor, spec = _trained("lk_synthetic_patient_los")
+    df, _, _, predictor, spec = _trained("lk_colombo_dengue")
     out = predictor.predict_one({s["name"]: s["default"] for s in spec})
     assert isinstance(out["prediction"], float) and out["probabilities"] is None
-    assert 0.5 < out["prediction"] < 80  # log1p target transformed back to days
+    assert 0 < out["prediction"] < 2000  # weekly dengue cases, on the original scale
     assert np.isfinite(predictor.predict_batch(df.head(10))["prediction"].astype(float)).all()

@@ -11,14 +11,14 @@ CHOICES = (
     (
         ProblemType.CLASSIFICATION,
         "Classification",
-        "Predict a category, for example whether a customer will churn (Yes / No) "
-        "or which risk group a patient belongs to.",
+        "Predict a category, for example the market catalogue of a lot at the Colombo "
+        "Tea Auction, or whether a customer will churn (Yes / No).",
     ),
     (
         ProblemType.REGRESSION,
         "Regression",
-        "Predict a number, for example weekly dengue cases, length of hospital stay "
-        "or a price in LKR.",
+        "Predict a number, for example weekly dengue cases in Colombo or a tea "
+        "auction price in LKR.",
     ),
 )
 

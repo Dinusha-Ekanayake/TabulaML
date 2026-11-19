@@ -2,7 +2,7 @@
 
 Every model is evaluated with the SAME repeated cross-validation folds through the SAME
 Automatic-mode TabulaML pipeline, so fold scores are paired and can be compared with a
-Wilcoxon signed-rank test. An ablation on the synthetic churn sample shows what the
+Wilcoxon signed-rank test. An ablation on the real tea-auction catalogue task shows what the
 preprocessing engine and the leakage detector contribute.
 
 Usage:
@@ -29,7 +29,7 @@ from scipy.stats import wilcoxon  # noqa: E402
 from sklearn.base import clone  # noqa: E402
 from sklearn.datasets import load_breast_cancer, load_diabetes, load_wine  # noqa: E402
 from sklearn.ensemble import RandomForestClassifier  # noqa: E402
-from sklearn.metrics import get_scorer, roc_auc_score  # noqa: E402
+from sklearn.metrics import f1_score, get_scorer  # noqa: E402
 from sklearn.model_selection import (  # noqa: E402
     RepeatedKFold,
     RepeatedStratifiedKFold,
@@ -68,7 +68,7 @@ def _datasets(quick: bool) -> list[tuple[str, pd.DataFrame, str, ProblemType, st
     out = []
     for card in list_samples():
         df, card = load_sample(card.key)
-        origin = "synthetic (SL context)" if card.is_synthetic else "real, public (Sri Lanka)"
+        origin = "real, public (Sri Lanka)"
         out.append((card.key, df, card.target, card.problem_type, origin))
     if not quick:
         for name, loader, ptype in (
@@ -164,35 +164,27 @@ def _wilcoxon(results: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def _ablation(folds: int) -> pd.DataFrame:
-    """Synthetic churn: automatic pipeline vs leak kept vs a naive pipeline."""
-    df, card = load_sample("lk_synthetic_telecom_churn")
-    cfg = _config(df, card.target, card.problem_type, folds)
+def _fit_score(cfg, df: pd.DataFrame) -> float:
     X, y, _, _ = prepare_data(df, cfg)
     X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=SEED, stratify=y)
-    auto = build_model_pipeline("rf", cfg, y=y_tr).fit(X_tr, y_tr)
+    model = build_model_pipeline("rf", cfg, y=y_tr).fit(X_tr, y_tr)
+    return f1_score(y_te, model.predict(X_te), average="macro")
+
+
+def _ablation(folds: int) -> pd.DataFrame:
+    """Real tea-auction catalogue task: automatic pipeline vs leak kept vs a naive pipeline."""
+    df, card = load_sample("lk_tea_auction_catalogue")
+    cfg = _config(df, card.target, card.problem_type, folds)
+    leak = next(c for c in cfg.columns if c.name == "category")
     rows = [
+        ("TabulaML automatic pipeline (leaky 'category' excluded)", _fit_score(cfg, df)),
         (
-            "TabulaML automatic pipeline (leak excluded)",
-            roc_auc_score(y_te, auto.predict_proba(X_te)[:, 1]),
-        )
+            "Same pipeline but 'category' kept (inflated: it encodes the catalogue)",
+            _fit_score(cfg.with_column(replace(leak, include=True)), df),
+        ),
     ]
-    leaky_cfg = cfg.with_column(
-        replace(next(c for c in cfg.columns if c.name == "disconnection_date"), include=True)
-    )
-    Xl, yl, _, _ = prepare_data(df, leaky_cfg)
-    Xl_tr, Xl_te, yl_tr, yl_te = train_test_split(
-        Xl, yl, test_size=0.2, random_state=SEED, stratify=yl
-    )
-    leaky = build_model_pipeline("rf", leaky_cfg, y=yl_tr).fit(Xl_tr, yl_tr)
-    rows.append(
-        (
-            "Same pipeline but leakage column kept (inflated, invalid)",
-            roc_auc_score(yl_te, leaky.predict_proba(Xl_te)[:, 1]),
-        )
-    )
-    naive = df.drop(columns=["customer_id", "disconnection_date"]).dropna()
-    yn = (naive.pop(card.target) == "Yes").astype(int)
+    naive = df.drop(columns=["category"]).dropna()
+    yn = naive.pop(card.target)
     Xn = pd.get_dummies(naive.astype(str))  # no type detection: numbers become categories
     Xn_tr, Xn_te, yn_tr, yn_te = train_test_split(
         Xn, yn, test_size=0.2, random_state=SEED, stratify=yn
@@ -200,11 +192,12 @@ def _ablation(folds: int) -> pd.DataFrame:
     rf = RandomForestClassifier(n_estimators=300, n_jobs=-1, random_state=SEED).fit(Xn_tr, yn_tr)
     rows.append(
         (
-            f"Naive: drop NaN rows ({len(df) - len(naive)} lost), one-hot everything as text",
-            roc_auc_score(yn_te, rf.predict_proba(Xn_te)[:, 1]),
+            f"Naive: drop rows with any NaN ({len(df) - len(naive)} lost), one-hot every column "
+            "as text",
+            f1_score(yn_te, rf.predict(Xn_te), average="macro"),
         )
     )
-    return pd.DataFrame(rows, columns=["setup", "test_roc_auc"])
+    return pd.DataFrame(rows, columns=["setup", "test_f1_macro"])
 
 
 def _figure(summary: pd.DataFrame, path: Path) -> None:
@@ -283,7 +276,7 @@ def _markdown(summary, tests, ablation, folds, repeats) -> str:
         "",
         _md_table(tests),
         "",
-        "## Ablation: what preprocessing and leakage control contribute (synthetic churn, RF, test ROC-AUC)",
+        "## Ablation: what preprocessing and leakage control contribute (tea catalogue, RF, test macro-F1)",
         "",
         _md_table(ablation),
         "",

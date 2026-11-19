@@ -1,70 +1,41 @@
-import subprocess
-import sys
-from pathlib import Path
+"""Bundled samples are genuine, publicly available Sri Lankan datasets with complete cards."""
 
-import pandas as pd
 import pytest
-from scipy.stats import skew
 
 from tabulaml.core.types import ProblemType
 from tabulaml.data.samples import list_samples, load_sample
 
-ROOT = Path(__file__).resolve().parents[2]
+BUNDLED = ["lk_colombo_dengue", "lk_tea_auction_catalogue", "lk_tea_auction_price"]
 
 
-@pytest.mark.parametrize("key", ["lk_synthetic_telecom_churn", "lk_synthetic_patient_los"])
-def test_sample_loads_and_matches_card(key):
+@pytest.mark.parametrize("key", BUNDLED)
+def test_bundled_sample_is_public_and_card_matches_data(key):
     df, card = load_sample(key)
+    assert not card.is_synthetic
+    assert card.license.startswith(("CC0", "CC-BY"))
+    assert "Public dataset" in card.provenance
     assert card.target in df.columns
-    assert card.is_synthetic and "Synthetic" in card.provenance
-    assert set(card.recommended_exclusions) <= set(df.columns)
     assert set(card.features) == set(df.columns)
+    assert set(card.recommended_exclusions) <= set(df.columns)
+
+
+def test_no_synthetic_samples_are_shipped():
+    assert all(not c.is_synthetic for c in list_samples())
 
 
 def test_list_samples_filters_by_problem_type():
     cls = {c.key for c in list_samples(ProblemType.CLASSIFICATION)}
     reg = {c.key for c in list_samples(ProblemType.REGRESSION)}
-    assert "lk_synthetic_telecom_churn" in cls and not cls & reg
-    assert {"lk_synthetic_patient_los", "lk_colombo_dengue"} <= reg
-    assert all(
-        c.problem_type == ProblemType.CLASSIFICATION
-        for c in list_samples(ProblemType.CLASSIFICATION)
-    )
+    assert "lk_tea_auction_catalogue" in cls and not cls & reg
+    assert {"lk_tea_auction_price", "lk_colombo_dengue"} <= reg
+
+
+def test_two_tasks_share_one_tea_file():
+    a, _ = load_sample("lk_tea_auction_catalogue")
+    b, _ = load_sample("lk_tea_auction_price")
+    assert a.shape == b.shape == (12233, 26)
 
 
 def test_unknown_sample_raises():
     with pytest.raises(KeyError):
         load_sample("nope")
-
-
-def test_churn_positive_rate_is_realistic():
-    df, _ = load_sample("lk_synthetic_telecom_churn")
-    rate = (df["churned"] == "Yes").mean()
-    assert 0.15 <= rate <= 0.30
-
-
-def test_los_target_is_right_skewed_positive_integers():
-    df, _ = load_sample("lk_synthetic_patient_los")
-    y = df["length_of_stay_days"]
-    assert y.min() >= 1 and skew(y) > 1
-
-
-def test_samples_contain_planted_messiness():
-    churn, _ = load_sample("lk_synthetic_telecom_churn")
-    assert churn["monthly_charge_lkr"].astype(str).str.startswith("Rs.").any()
-    assert churn.duplicated().any()
-    assert churn["disconnection_date"].notna().sum() == (churn["churned"] == "Yes").sum()
-    assert churn.isna().any().any()
-
-
-def test_generator_is_reproducible(tmp_path):
-    outs = []
-    for name in ("a", "b"):
-        out = tmp_path / name
-        subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "generate_samples.py"), "--out", str(out)],
-            check=True,
-            capture_output=True,
-        )
-        outs.append(pd.read_csv(out / "lk_synthetic_telecom_churn.csv"))
-    pd.testing.assert_frame_equal(outs[0], outs[1])

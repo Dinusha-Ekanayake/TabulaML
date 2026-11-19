@@ -3,15 +3,15 @@
 Start the app with `streamlit run app.py`. The sidebar shows the six steps. You can always go back, but changing an earlier choice clears the later steps, so results never mix settings. **Start over** resets everything.
 
 ## 1. Problem type
-Choose **Classification** (predict a category, for example churn Yes/No) or **Regression** (predict a number, for example weekly dengue cases). This choice decides which targets, models and metrics are offered.
+Choose **Classification** (predict a category, for example a tea lot's market catalogue or churn Yes/No) or **Regression** (predict a number, for example a tea auction price or weekly dengue cases). This choice decides which targets, models and metrics are offered.
 
 ## 2. Data
 - **Upload my dataset:** CSV, TXT, XLSX or XLS, up to 200 MB and 1 million cells. The delimiter and text encoding are detected automatically. Excel files let you pick a sheet. Duplicate column names are renamed, and rows with more values than headers are rejected with a message rather than silently misaligned.
-- **Use a Sri Lankan sample dataset:** pick a sample, read its dataset card (source, licence, features, limitations), then **Load this sample**. Real public datasets show a green badge and synthetic ones an amber badge.
+- **Use a Sri Lankan sample dataset:** pick a sample, read its dataset card (source, licence, features, limitations), then **Load this sample**. All samples are genuine, publicly available Sri Lankan datasets (green badge), and each card states its licence and how to cite it.
 - **Target column:** the app checks it against the problem type. For example, regression needs a numeric target, and every class needs enough rows for the test split plus cross-validation. If the column looks like the other problem type, the app says so.
 
 ## 3. Preprocessing
-**Data quality report:** row and column counts, duplicates, a per-column table (detected type, missing share, unique values, skew, outlier share, examples, warnings), a missing-values chart and the target distribution. **Leakage warnings** appear here, for columns that would not be known at prediction time, such as a disconnection date in a churn table.
+**Data quality report:** row and column counts, duplicates, a per-column table (detected type, missing share, unique values, skew, outlier share, examples, warnings), a missing-values chart and the target distribution. **Leakage warnings** appear here, for columns that would not be known at prediction time, such as the tea `category`, which already encodes the catalogue you are trying to predict.
 
 **Preprocessing**
 - *Automatic*: a table with the decision and the reason for every column, and dataset-level notes (duplicates dropped, imbalance handling, target transform).

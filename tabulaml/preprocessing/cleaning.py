@@ -15,15 +15,28 @@ from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_numeric_
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from tabulaml.config import FALSE_TOKENS, MISSING_TOKENS, TRUE_TOKENS
+from tabulaml.core.types import FeatureType
 
 PLAN_NUMERIC = "numeric"
 PLAN_NUMERIC_STRING = "numeric_string"
 PLAN_BOOLEAN = "boolean"
 PLAN_DATETIME = "datetime"
 PLAN_CATEGORY = "category"
+_PLAN_FOR_TYPE = {
+    FeatureType.NUMERIC: PLAN_NUMERIC_STRING,
+    FeatureType.BOOLEAN: PLAN_BOOLEAN,
+    FeatureType.DATETIME: PLAN_DATETIME,
+    FeatureType.CATEGORICAL: PLAN_CATEGORY,
+    FeatureType.IDENTIFIER: PLAN_CATEGORY,
+    FeatureType.TEXT: PLAN_CATEGORY,
+    FeatureType.CONSTANT: PLAN_CATEGORY,
+}
 
-# € = euro, £ = pound (escaped so file-encoding mishaps cannot corrupt the pattern)
-_CURRENCY_NOISE = re.compile(r"(?i)rs\.?|lkr|usd|\$|€|£|%|,|\s")
+# \u20ac = euro, \u00a3 = pound: written as escapes so file-encoding mishaps cannot
+# corrupt the pattern. Thousands separators are removed separately (see _parse_numbers).
+_CURRENCY_NOISE = re.compile(r"(?i)rs\.?|lkr|usd|\$|\u20ac|\u00a3|%|\s")
+_DECIMAL_COMMA_LIKE = re.compile(r"^-?\d{1,3},\d{1,2}$")  # "1,25": decimal or thousands?
+_CODE_LIKE = re.compile(r"^0\d+$")  # "00100": a code with meaningful leading zeros
 _BOOL_TOKENS = frozenset(TRUE_TOKENS) | frozenset(FALSE_TOKENS)
 _NUMERIC_PARSE_RATIO = 0.95
 _DATETIME_PARSE_RATIO = 0.90
@@ -44,17 +57,50 @@ def normalize_missing(s: pd.Series, tokens: tuple[str, ...] = MISSING_TOKENS) ->
     return s.astype(object).map(fix)
 
 
-def _parse_numbers(s: pd.Series) -> pd.Series:
-    """Parse numeric strings such as 'Rs. 1,250' or '12%'. Unparseable values become NaN."""
+def _parse_numbers(s: pd.Series, decimal: str = ".", thousands: str | None = None) -> pd.Series:
+    """Parse numeric strings such as 'Rs. 1,250', '12%' or (decimal=",") '1.250,5'.
+
+    Unparseable values become NaN; the cleaner's parse report counts them.
+    """
     as_text = s.where(s.isna(), s.astype(str))
-    return pd.to_numeric(as_text.str.replace(_CURRENCY_NOISE, "", regex=True), errors="coerce")
+    text = as_text.str.replace(_CURRENCY_NOISE, "", regex=True)
+    if decimal == ",":
+        text = text.str.replace(thousands or ".", "", regex=False)
+        text = text.str.replace(",", ".", regex=False)
+    else:
+        text = text.str.replace(thousands or ",", "", regex=False)
+    return pd.to_numeric(text, errors="coerce")
 
 
-def coerce_numeric(s: pd.Series, tokens: tuple[str, ...] = MISSING_TOKENS) -> pd.Series:
-    """Best-effort conversion of any Series to float64 (used for target validation)."""
+def coerce_numeric(
+    s: pd.Series,
+    tokens: tuple[str, ...] = MISSING_TOKENS,
+    decimal: str = ".",
+    thousands: str | None = None,
+) -> pd.Series:
+    """Best-effort conversion of any Series to float64."""
     if is_numeric_dtype(s) and not is_bool_dtype(s):
         return s.astype("float64")
-    return _parse_numbers(normalize_missing(s, tokens)).astype("float64")
+    return _parse_numbers(normalize_missing(s, tokens), decimal, thousands).astype("float64")
+
+
+def _looks_like_codes(present: pd.Series) -> bool:
+    """All-digit strings where some keep a leading zero ('00100') are codes, not numbers."""
+    text = present.astype(str)
+    return bool(text.str.fullmatch(r"\d+").all() and text.str.match(_CODE_LIKE).any())
+
+
+def number_format_warning(s: pd.Series, decimal: str = ".") -> str | None:
+    """Warn when values like '1,25' could be a decimal comma rather than a thousands mark."""
+    present = normalize_missing(s).dropna().astype(str)
+    if decimal != "." or present.empty:
+        return None
+    if present.str.match(_DECIMAL_COMMA_LIKE).mean() >= 0.5:
+        return (
+            "Values like '1,25' may use a decimal comma. Set the number format to "
+            "decimal ',' if that is the case; they are read as thousands now."
+        )
+    return None
 
 
 def _looks_like_datetime(values: pd.Series) -> bool:
@@ -69,7 +115,9 @@ def _looks_like_datetime(values: pd.Series) -> bool:
     return bool(parsed.notna().mean() >= _DATETIME_PARSE_RATIO)
 
 
-def _plan_for(s: pd.Series, tokens: tuple[str, ...]) -> str:
+def _plan_for(
+    s: pd.Series, tokens: tuple[str, ...], decimal: str = ".", thousands: str | None = None
+) -> str:
     if is_bool_dtype(s):
         return PLAN_BOOLEAN
     if is_datetime64_any_dtype(s):
@@ -81,7 +129,9 @@ def _plan_for(s: pd.Series, tokens: tuple[str, ...]) -> str:
         return PLAN_CATEGORY
     if present.astype(str).str.lower().isin(_BOOL_TOKENS).all():
         return PLAN_BOOLEAN
-    if _parse_numbers(present).notna().mean() >= _NUMERIC_PARSE_RATIO:
+    if _looks_like_codes(present):
+        return PLAN_CATEGORY
+    if _parse_numbers(present, decimal, thousands).notna().mean() >= _NUMERIC_PARSE_RATIO:
         return PLAN_NUMERIC_STRING
     if _looks_like_datetime(present):
         return PLAN_DATETIME
@@ -142,28 +192,58 @@ class DataCleaner(BaseEstimator, TransformerMixin):
         self,
         normalize_category_case: bool = True,
         missing_tokens: tuple[str, ...] = MISSING_TOKENS,
+        column_types: dict[str, FeatureType] | None = None,
+        decimal: str = ".",
+        thousands: str | None = None,
     ) -> None:
         self.normalize_category_case = normalize_category_case
         self.missing_tokens = missing_tokens
+        self.column_types = column_types
+        self.decimal = decimal
+        self.thousands = thousands
+
+    def _plan(self, s: pd.Series, col: str) -> str:
+        """The user's explicit type wins; otherwise infer from the values."""
+        explicit = (self.column_types or {}).get(col)
+        if explicit is not None:
+            return _PLAN_FOR_TYPE[FeatureType(explicit)]
+        return _plan_for(s, self.missing_tokens, self.decimal, self.thousands)
 
     def fit(self, X: pd.DataFrame, y: Any = None) -> DataCleaner:
         self.feature_names_in_ = np.asarray(X.columns, dtype=object)
         self.plan_: dict[str, str] = {}
         self.category_maps_: dict[str, dict[str, str]] = {}
         for col in X.columns:
-            plan = _plan_for(X[col], self.missing_tokens)
+            plan = self._plan(X[col], col)
             self.plan_[col] = plan
             if plan == PLAN_CATEGORY and self.normalize_category_case:
                 cleaned = normalize_missing(X[col], self.missing_tokens)
                 self.category_maps_[col] = _canonical_forms(cleaned)
         return self
 
+    def parse_report(self, X: pd.DataFrame) -> dict[str, dict[str, Any]]:
+        """Per column: values that were present but could NOT be parsed (became missing)."""
+        report: dict[str, dict[str, Any]] = {}
+        for col in self.feature_names_in_:
+            if col not in X.columns or self.plan_[col] == PLAN_CATEGORY:
+                continue
+            present = normalize_missing(X[col], self.missing_tokens).notna()
+            failed = present & self._transform_column(X[col], col).isna()
+            if failed.any():
+                examples = X.loc[failed, col].astype(str).unique()[:3].tolist()
+                report[str(col)] = {
+                    "failed": int(failed.sum()),
+                    "share": float(failed.mean()),
+                    "examples": examples,
+                }
+        return report
+
     def _transform_column(self, s: pd.Series, col: str) -> pd.Series:
         plan = self.plan_[col]
         if plan in (PLAN_NUMERIC, PLAN_NUMERIC_STRING):
             # Same parser for both: a numeric training column may arrive as text
             # ("1,200", "?") in a batch file and must not silently become NaN.
-            return coerce_numeric(s, self.missing_tokens)
+            return coerce_numeric(s, self.missing_tokens, self.decimal, self.thousands)
         if plan == PLAN_BOOLEAN:
             return _to_boolean(s, self.missing_tokens)
         if plan == PLAN_DATETIME:

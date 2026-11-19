@@ -35,6 +35,9 @@ class DatasetCard:
     anonymisation: str
     recommended_exclusions: tuple[str, ...]
     source_url: str = ""
+    validation: str = "random"  # random | grouped | time_ordered
+    group_column: str | None = None
+    order_column: str | None = None
 
 
 def _card_from_json(path: Path) -> DatasetCard:
@@ -56,6 +59,9 @@ def _card_from_json(path: Path) -> DatasetCard:
         anonymisation=raw.get("anonymisation", ""),
         recommended_exclusions=tuple(raw.get("recommended_exclusions", ())),
         source_url=raw.get("source_url", ""),
+        validation=raw.get("validation", "random"),
+        group_column=raw.get("group_column"),
+        order_column=raw.get("order_column"),
     )
 
 

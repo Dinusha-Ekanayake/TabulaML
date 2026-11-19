@@ -1,18 +1,21 @@
 {
   "key": "lk_tea_auction_price",
+  "validation": "grouped",
+  "group_column": "sale_id",
   "title": "Colombo Tea Auction: price in LKR (real, public)",
   "problem_type": "regression",
   "target": "price_mid_lkr",
   "description": "One row per auction price quote. Predict the mid auction price (LKR/kg) from catalogue, grade, tier, region, exchange rate and lagged weather.",
   "target_definition": "price_mid_lkr = (low price + high price) / 2 for the quote, in LKR per kg; 3.6% of rows have no price and are dropped.",
   "known_limitations": [
-    "Rows from the same weekly sale are correlated; random cross-validation is optimistic compared with forecasting the next week.",
+    "Rows from the same weekly sale are related, so TabulaML groups them by sale_id (a whole sale is either in training or in testing).",
     "Many 'unknown' values in grade, tier and segment."
   ],
   "recommended_exclusions": [],
   "provenance": "Public dataset: Hugging Face 'colombo-tea-auction-prices/cta-price-prediction' (revision a671701), extracted from 105 weekly Forbes & Walker Tea Brokers reports, with Open-Meteo weather. Paper: 'Forecasting Weather-Driven Price Dynamics Across Sri Lankan Tea Market Catalogues' (MERCon 2026).",
   "is_synthetic": false,
   "file": "lk_tea_auction.csv",
+  "source_url": "https://huggingface.co/datasets/colombo-tea-auction-prices/cta-price-prediction",
   "context": "Genuine Sri Lankan market data: the Colombo Tea Auction, one of the world's largest tea auctions, with weather for the growing regions.",
   "license": "CC-BY-4.0 (attribution required)",
   "collection_period": "November 2023 to March 2026 (105 weekly sales)",
@@ -44,6 +47,5 @@
     "avg_weather_severity": "Composite weather severity score from the report text",
     "fx_usd": "USD/LKR exchange rate"
   },
-  "anonymisation": "Market prices only; no personal data.",
-  "source_url": "https://huggingface.co/datasets/colombo-tea-auction-prices/cta-price-prediction"
+  "anonymisation": "Market prices only; no personal data."
 }

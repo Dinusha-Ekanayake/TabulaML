@@ -102,7 +102,7 @@ class Predictor:
             raise ValueError(" ".join(errors))
         X = df[self.feature_columns]
         out = df.copy()
-        out["prediction"] = self._decode(self.pipeline.predict(X))
+        out["prediction"] = self._decode(np.asarray(self.pipeline.predict(X)).ravel())
         if self.is_classifier and hasattr(self.pipeline, "predict_proba"):
             proba = self.pipeline.predict_proba(X)
             for i, label in enumerate(self.class_labels or range(proba.shape[1])):

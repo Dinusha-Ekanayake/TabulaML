@@ -1,5 +1,8 @@
 {
   "key": "lk_colombo_dengue",
+  "validation": "time_ordered",
+  "order_column": "week_start",
+  "source_url": "https://github.com/thiyangt/colmozzie",
   "title": "Colombo weekly dengue cases and weather (real, public)",
   "problem_type": "regression",
   "target": "dengue_cases",
@@ -10,6 +13,7 @@
   "license": "CC0-1.0",
   "collection_period": "2008 week 52 to 2014 week 21 (279 weeks)",
   "features": {
+    "week_start": "Monday of the ISO week (used to order rows in time)",
     "year": "Calendar year",
     "week": "Week number within the year",
     "avg_temp_c": "Average temperature of the week (C)",
@@ -29,10 +33,9 @@
   "target_definition": "dengue_cases = total notified dengue cases in Colombo district for the week.",
   "known_limitations": [
     "Small (279 rows), single district.",
-    "Weekly time series: random cross-validation is optimistic compared with a strict forward-in-time evaluation.",
+    "Weekly time series: TabulaML validates it in time order (train on the past, test on later weeks).",
     "The first two weeks have missing lag values (handled by imputation)."
   ],
   "anonymisation": "Aggregate counts only; no individual patient data.",
-  "recommended_exclusions": [],
-  "source_url": "https://github.com/thiyangt/colmozzie"
+  "recommended_exclusions": []
 }

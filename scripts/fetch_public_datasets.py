@@ -116,6 +116,8 @@ TEA_COMMON = {
 }
 TEA_CATALOGUE_CARD = {
     "key": "lk_tea_auction_catalogue",
+    "validation": "grouped",
+    "group_column": "sale_id",
     "title": "Colombo Tea Auction: market catalogue (real, public)",
     "problem_type": "classification",
     "target": "catalogue",
@@ -127,13 +129,16 @@ TEA_CATALOGUE_CARD = {
         "'category' determines the catalogue almost exactly (each category is listed in one "
         "catalogue), so TabulaML flags and excludes it as leakage.",
         "Many 'unknown' values in grade, tier and segment where the reports do not state them.",
-        "Rows from the same weekly sale are correlated; random cross-validation is optimistic.",
+        "Rows from the same weekly sale are related, so TabulaML groups them by sale_id "
+        "(a whole sale is either in training or in testing).",
     ],
     "recommended_exclusions": ["category"],
     **TEA_COMMON,
 }
 TEA_PRICE_CARD = {
     "key": "lk_tea_auction_price",
+    "validation": "grouped",
+    "group_column": "sale_id",
     "title": "Colombo Tea Auction: price in LKR (real, public)",
     "problem_type": "regression",
     "target": "price_mid_lkr",
@@ -142,8 +147,8 @@ TEA_PRICE_CARD = {
     "target_definition": "price_mid_lkr = (low price + high price) / 2 for the quote, in LKR "
     "per kg; 3.6% of rows have no price and are dropped.",
     "known_limitations": [
-        "Rows from the same weekly sale are correlated; random cross-validation is optimistic "
-        "compared with forecasting the next week.",
+        "Rows from the same weekly sale are related, so TabulaML groups them by sale_id "
+        "(a whole sale is either in training or in testing).",
         "Many 'unknown' values in grade, tier and segment.",
     ],
     "recommended_exclusions": [],
@@ -184,6 +189,15 @@ def build_dengue(raw: pd.DataFrame) -> pd.DataFrame:
     df["cases_last_week"] = df["dengue_cases"].shift(1)
     df["cases_2_weeks_ago"] = df["dengue_cases"].shift(2)
     df["rainfall_prev_4_weeks_mm"] = df["rainfall_mm"].shift(1).rolling(4, min_periods=1).sum()
+    # Monday of the ISO week: a real date, so the app can order rows in time.
+    week_start = pd.to_datetime(
+        df["year"].astype(int).astype(str)
+        + "-W"
+        + df["week"].astype(int).astype(str).str.zfill(2)
+        + "-1",
+        format="%G-W%V-%u",
+    )
+    df.insert(0, "week_start", week_start.dt.strftime("%Y-%m-%d"))
     target = df.pop("dengue_cases")
     df["dengue_cases"] = target
     return df.reset_index(drop=True)
@@ -191,6 +205,8 @@ def build_dengue(raw: pd.DataFrame) -> pd.DataFrame:
 
 DENGUE_CARD = {
     "key": "lk_colombo_dengue",
+    "validation": "time_ordered",
+    "order_column": "week_start",
     "source_url": "https://github.com/thiyangt/colmozzie",
     "title": "Colombo weekly dengue cases and weather (real, public)",
     "problem_type": "regression",
@@ -206,6 +222,7 @@ DENGUE_CARD = {
     "license": "CC0-1.0",
     "collection_period": "2008 week 52 to 2014 week 21 (279 weeks)",
     "features": {
+        "week_start": "Monday of the ISO week (used to order rows in time)",
         "year": "Calendar year",
         "week": "Week number within the year",
         "avg_temp_c": "Average temperature of the week (C)",
@@ -226,8 +243,8 @@ DENGUE_CARD = {
     "for the week.",
     "known_limitations": [
         "Small (279 rows), single district.",
-        "Weekly time series: random cross-validation is optimistic compared with a strict "
-        "forward-in-time evaluation.",
+        "Weekly time series: TabulaML validates it in time order (train on the past, "
+        "test on later weeks).",
         "The first two weeks have missing lag values (handled by imputation).",
     ],
     "anonymisation": "Aggregate counts only; no individual patient data.",

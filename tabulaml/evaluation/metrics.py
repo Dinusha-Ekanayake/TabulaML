@@ -75,7 +75,7 @@ def _no_zero_targets(y: Any) -> bool:
     return bool(np.all(np.asarray(y, dtype=float) != 0))
 
 
-def scoring_map(problem_type: ProblemType, y: Any) -> dict[str, Any]:
+def scoring_map(problem_type: ProblemType, y: Any, positive: int | None = None) -> dict[str, Any]:
     """sklearn scorers keyed by metric name; error metrics are negated (sklearn convention)."""
     if problem_type == ProblemType.REGRESSION:
         scorers = {
@@ -102,7 +102,7 @@ def scoring_map(problem_type: ProblemType, y: Any) -> dict[str, Any]:
             "f1_weighted": "f1_weighted",
             "roc_auc": "roc_auc_ovr",
         }
-    pos = minority_label(y)
+    pos = minority_label(y) if positive is None else positive
     return common | {
         "precision": make_scorer(precision_score, pos_label=pos, zero_division=0),
         "recall": make_scorer(recall_score, pos_label=pos, zero_division=0),
@@ -131,17 +131,26 @@ def _regression(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
     return out
 
 
+def _safe(fn: Any, *args: Any, **kwargs: Any) -> float:
+    """A metric that cannot be computed on this fold (e.g. a missing class) becomes NaN."""
+    try:
+        return float(fn(*args, **kwargs))
+    except ValueError:
+        return float("nan")
+
+
 def _probability_metrics(y_true: np.ndarray, proba: np.ndarray, pos: int) -> dict[str, float]:
     labels = np.arange(proba.shape[1])
-    proba = proba / proba.sum(axis=1, keepdims=True)  # float32 boosters drift off 1.0
-    out = {"log_loss": log_loss(y_true, proba, labels=labels)}
+    totals = proba.sum(axis=1, keepdims=True)
+    proba = proba / np.where(totals > 0, totals, 1.0)  # float32 boosters drift off 1.0
+    out = {"log_loss": _safe(log_loss, y_true, proba, labels=labels)}
     if len(np.unique(y_true)) < 2:
         return out
     if proba.shape[1] == 2:
-        out["roc_auc"] = roc_auc_score(y_true, proba[:, 1])
-        out["pr_auc"] = average_precision_score(y_true == pos, proba[:, pos])
+        out["roc_auc"] = _safe(roc_auc_score, y_true == pos, proba[:, pos])
+        out["pr_auc"] = _safe(average_precision_score, y_true == pos, proba[:, pos])
     else:
-        out["roc_auc"] = roc_auc_score(y_true, proba, multi_class="ovr", labels=labels)
+        out["roc_auc"] = _safe(roc_auc_score, y_true, proba, multi_class="ovr", labels=labels)
     return out
 
 
@@ -176,8 +185,10 @@ def compute_metrics(
     y_pred: Any,
     y_proba: Any = None,
     y_train: Any = None,
+    positive: int | None = None,
 ) -> dict[str, float]:
-    """Test-set metrics. ``y_train`` fixes the positive class (minority of the training data)."""
+    """Metrics for one evaluation set. The binary positive class is ``positive`` when given
+    (the user's choice), otherwise the minority class of ``y_train``."""
     y_true = np.asarray(y_true)
     if problem_type == ProblemType.REGRESSION:
         return {
@@ -185,8 +196,12 @@ def compute_metrics(
             for k, v in _regression(y_true.astype(float), np.asarray(y_pred, float)).items()
         }
     reference = y_train if y_train is not None else y_true
-    n_classes = int(np.asarray(reference).max()) + 1
-    pos = minority_label(reference)
+    n_classes = (
+        np.asarray(y_proba).shape[1]
+        if y_proba is not None
+        else int(max(np.asarray(reference).max(), np.asarray(y_true).max())) + 1
+    )
+    pos = minority_label(reference) if positive is None else positive
     out = _classification(y_true, np.asarray(y_pred), n_classes == 2, pos)
     if y_proba is not None:
         out |= _probability_metrics(y_true, np.asarray(y_proba, dtype=float), pos)

@@ -303,7 +303,7 @@ def _make_messy_patient(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFr
 
 
 CHURN_CARD = {
-    "key": "lk_telecom_churn",
+    "key": "lk_synthetic_telecom_churn",
     "title": "Sri Lankan telecom customer churn (synthetic)",
     "problem_type": "classification",
     "target": "churned",
@@ -354,7 +354,7 @@ CHURN_CARD = {
 }
 
 LOS_CARD = {
-    "key": "lk_patient_los",
+    "key": "lk_synthetic_patient_los",
     "title": "Sri Lankan hospital length of stay (synthetic)",
     "problem_type": "regression",
     "target": "length_of_stay_days",

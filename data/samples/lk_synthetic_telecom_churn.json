@@ -1,5 +1,5 @@
 {
-  "key": "lk_telecom_churn",
+  "key": "lk_synthetic_telecom_churn",
   "title": "Sri Lankan telecom customer churn (synthetic)",
   "problem_type": "classification",
   "target": "churned",

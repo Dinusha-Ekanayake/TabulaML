@@ -2,3 +2,4 @@
 pytest
 pytest-cov
 ruff
+kagglehub  # only for scripts/fetch_public_datasets.py telco

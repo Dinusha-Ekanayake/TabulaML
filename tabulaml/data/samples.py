@@ -62,7 +62,8 @@ def _registry(samples_dir: Path = SAMPLES_DIR) -> dict[str, Path]:
 
 
 def list_samples(problem_type: ProblemType | None = None) -> list[DatasetCard]:
-    cards = [_card_from_json(p) for p in _registry().values()]
+    """Cards of samples whose CSV is present (fetch-on-demand datasets appear once fetched)."""
+    cards = [_card_from_json(p) for p in _registry().values() if p.with_suffix(".csv").exists()]
     if problem_type is None:
         return cards
     return [c for c in cards if c.problem_type == problem_type]
@@ -74,4 +75,9 @@ def load_sample(key: str) -> tuple[pd.DataFrame, DatasetCard]:
         raise KeyError(f"Unknown sample dataset '{key}'. Available: {sorted(registry)}")
     card = _card_from_json(registry[key])
     csv_path = registry[key].with_suffix(".csv")
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"Sample '{key}' has not been downloaded yet. "
+            f"Run: python scripts/fetch_public_datasets.py (see the dataset card)."
+        )
     return pd.read_csv(csv_path), card

@@ -38,15 +38,15 @@ def _injected():
 
 
 def _datasets():
-    churn, churn_card = load_sample("lk_telecom_churn")
-    los, los_card = load_sample("lk_patient_los")
+    churn, churn_card = load_sample("lk_synthetic_telecom_churn")
+    los, los_card = load_sample("lk_synthetic_patient_los")
     return [
         ("breast_cancer", _sklearn(load_breast_cancer), "y", CLS),
         ("wine_multiclass", _sklearn(load_wine), "y", CLS),
         ("diabetes", _sklearn(load_diabetes), "y", REG),
         ("injected", _injected(), "y", CLS),
-        ("lk_telecom_churn", churn, churn_card.target, CLS),
-        ("lk_patient_los", los, los_card.target, REG),
+        ("lk_synthetic_telecom_churn", churn, churn_card.target, CLS),
+        ("lk_synthetic_patient_los", los, los_card.target, REG),
     ]
 
 

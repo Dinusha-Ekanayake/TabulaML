@@ -21,6 +21,7 @@ ignore = ["UP042"]  # (str, Enum) is intentional: values must also behave as pla
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*" = ["E501"]
+"tests/*" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

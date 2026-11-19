@@ -1,5 +1,5 @@
 {
-  "key": "lk_patient_los",
+  "key": "lk_synthetic_patient_los",
   "title": "Sri Lankan hospital length of stay (synthetic)",
   "problem_type": "regression",
   "target": "length_of_stay_days",

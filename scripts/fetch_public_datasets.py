@@ -1,0 +1,258 @@
+"""Fetch and prepare the PUBLIC, genuine Sri Lankan sample datasets.
+
+Usage:
+    python scripts/fetch_public_datasets.py dengue
+    python scripts/fetch_public_datasets.py telco --kaggle-dir PATH   # folder with main.csv,
+                                                                       # train_cxid.csv, test_cxid.csv
+    python scripts/fetch_public_datasets.py telco                     # downloads via kagglehub
+                                                                       # (needs Kaggle credentials)
+
+Datasets
+--------
+lk_colombo_dengue  (regression, CC0)
+    Weekly notified dengue cases in Colombo district with weather variables,
+    2008-W52 to 2014-W21 (279 weeks). Source: R package 'colmozzie' by Thiyanga Talagala,
+    https://github.com/thiyangt/colmozzie (CC0), compiled from the Weekly Epidemiological
+    Reports of the Epidemiology Unit, Ministry of Health, Sri Lanka.
+
+lk_telco_churn  (classification, CC0)
+    "Real World Customer Churn Dataset in Telco Domain" by Lasal Jayawardena,
+    https://www.kaggle.com/datasets/lasaljaywardena/real-world-churn (CC0): anonymised daily
+    usage of 65,005 customers of a large Sri Lankan operator, Jan-Mar 2023. Kaggle requires a
+    (free) account to download, so this dataset is built locally from the downloaded files.
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import os
+import urllib.request
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+OUT = Path(__file__).resolve().parents[1] / "data" / "samples"
+COLMOZZIE_SHA = "c964aa4b6ac79c7536dbde16c9b9a3a8d34f6909"
+COLMOZZIE_URL = (
+    f"https://raw.githubusercontent.com/thiyangt/colmozzie/{COLMOZZIE_SHA}/data-raw/dengColombo.csv"
+)
+TELCO_SAMPLE_ROWS = 15_000  # stratified sample keeps the file small and under the cell limit
+SEED = 42
+
+
+def _write(df: pd.DataFrame, card: dict) -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    df.to_csv(OUT / f"{card['key']}.csv", index=False)
+    (OUT / f"{card['key']}.json").write_text(json.dumps(card, indent=2), encoding="utf-8")
+    print(f"wrote {card['key']}: {df.shape}")
+
+
+# --------------------------------------------------------------------------- dengue
+
+
+def build_dengue(raw: pd.DataFrame) -> pd.DataFrame:
+    df = raw.rename(
+        columns={
+            "Cases": "dengue_cases",
+            "Year": "year",
+            "Week": "week",
+            "TEM": "avg_temp_c",
+            "TMAX": "max_temp_c",
+            "Tm": "min_temp_c",
+            "SLP": "sea_level_pressure_hpa",
+            "H": "relative_humidity_pct",
+            "PP": "rainfall_mm",
+            "VV": "visibility_km",
+            "V": "wind_speed_kmh",
+            "VM": "max_wind_kmh",
+        }
+    ).sort_values(["year", "week"], kind="stable")
+    # Only PAST information is added, so every feature is known at prediction time.
+    df["cases_last_week"] = df["dengue_cases"].shift(1)
+    df["cases_2_weeks_ago"] = df["dengue_cases"].shift(2)
+    df["rainfall_prev_4_weeks_mm"] = df["rainfall_mm"].shift(1).rolling(4, min_periods=1).sum()
+    target = df.pop("dengue_cases")
+    df["dengue_cases"] = target
+    return df.reset_index(drop=True)
+
+
+DENGUE_CARD = {
+    "key": "lk_colombo_dengue",
+    "title": "Colombo weekly dengue cases and weather (real, public)",
+    "problem_type": "regression",
+    "target": "dengue_cases",
+    "provenance": "Public dataset: R package 'colmozzie' (Thiyanga Talagala), "
+    "https://github.com/thiyangt/colmozzie, commit " + COLMOZZIE_SHA[:7] + ". Compiled from the "
+    "Weekly Epidemiological Reports of the Epidemiology Unit, Ministry of Health, Sri Lanka.",
+    "is_synthetic": False,
+    "description": "One row per week for Colombo district: notified dengue cases with that "
+    "week's weather. Lagged case counts and recent rainfall were added by "
+    "scripts/fetch_public_datasets.py using past weeks only.",
+    "context": "Genuine Sri Lankan public-health surveillance data (Colombo district).",
+    "license": "CC0-1.0",
+    "collection_period": "2008 week 52 to 2014 week 21 (279 weeks)",
+    "features": {
+        "year": "Calendar year",
+        "week": "Week number within the year",
+        "avg_temp_c": "Average temperature of the week (C)",
+        "max_temp_c": "Maximum temperature of the week (C)",
+        "min_temp_c": "Minimum temperature of the week (C)",
+        "sea_level_pressure_hpa": "Sea level pressure",
+        "relative_humidity_pct": "Relative humidity (%)",
+        "rainfall_mm": "Precipitation amount (mm)",
+        "visibility_km": "Mean visibility (km)",
+        "wind_speed_kmh": "Mean wind speed (km/h)",
+        "max_wind_kmh": "Maximum sustained wind speed (km/h)",
+        "cases_last_week": "Notified cases in the previous week (derived)",
+        "cases_2_weeks_ago": "Notified cases two weeks earlier (derived)",
+        "rainfall_prev_4_weeks_mm": "Rainfall over the previous four weeks (derived)",
+        "dengue_cases": "Target: notified dengue cases in the week",
+    },
+    "target_definition": "dengue_cases = total notified dengue cases in Colombo district "
+    "for the week.",
+    "known_limitations": [
+        "Small (279 rows), single district.",
+        "Weekly time series: random cross-validation is optimistic compared with a strict "
+        "forward-in-time evaluation.",
+        "The first two weeks have missing lag values (handled by imputation).",
+    ],
+    "anonymisation": "Aggregate counts only; no individual patient data.",
+    "recommended_exclusions": [],
+}
+
+
+def fetch_dengue() -> None:
+    with urllib.request.urlopen(COLMOZZIE_URL, timeout=60) as resp:  # noqa: S310 - fixed URL
+        raw = pd.read_csv(io.BytesIO(resp.read()))
+    _write(build_dengue(raw), DENGUE_CARD)
+
+
+# --------------------------------------------------------------------------- telco
+
+
+def _kaggle_dir(path: str | None) -> Path:
+    if path:
+        return Path(path)
+    import kagglehub  # optional dependency, only needed for automatic download
+
+    return Path(kagglehub.dataset_download("lasaljaywardena/real-world-churn"))
+
+
+def _find(folder: Path, name: str) -> Path:
+    matches = list(folder.rglob(name))
+    if not matches:
+        raise FileNotFoundError(f"{name} not found under {folder}")
+    return matches[0]
+
+
+def _usage_features(main_csv: Path) -> pd.DataFrame:
+    """Per customer and usage type: first-month totals/activity/trend + a leakage column."""
+    days = [f"Day_{i}" for i in range(1, 91)]
+    parts = []
+    for chunk in pd.read_csv(
+        main_csv, chunksize=50_000, usecols=["customer_id", "usage_type", *days]
+    ):
+        x = chunk[days].to_numpy(dtype="float64")
+        parts.append(
+            pd.DataFrame(
+                {
+                    "customer_id": chunk["customer_id"].to_numpy(),
+                    "usage": chunk["usage_type"]
+                    .str.replace("usage_", "")
+                    .str.replace("_daily", ""),
+                    "m1_total": x[:, :30].sum(axis=1),
+                    "m1_active_days": (x[:, :30] > 0).sum(axis=1),
+                    "m1_trend": x[:, 20:30].mean(axis=1) - x[:, :10].mean(axis=1),
+                    "late_active": (x[:, 60:90] > 0).sum(axis=1),
+                }
+            )
+        )
+    long = pd.concat(parts, ignore_index=True)
+    wide = long.pivot_table(
+        index="customer_id", columns="usage", values=["m1_total", "m1_active_days", "m1_trend"]
+    )
+    wide.columns = [f"{usage}_{stat}" for stat, usage in wide.columns]
+    wide = wide[sorted(wide.columns)]
+    # Days 61-90 happen AFTER the churn decision window: kept on purpose as a real-world
+    # leakage example that TabulaML's leakage detector must flag.
+    wide["active_days_61_90_any_service"] = long.groupby("customer_id")["late_active"].max()
+    return wide.reset_index()
+
+
+def build_telco(folder: Path) -> pd.DataFrame:
+    labels = pd.concat(
+        [pd.read_csv(_find(folder, "train_cxid.csv")), pd.read_csv(_find(folder, "test_cxid.csv"))]
+    ).drop_duplicates("customer_id")
+    features = _usage_features(_find(folder, "main.csv"))
+    df = features.merge(labels, on="customer_id", how="inner")
+    df["churn"] = np.where(df["churn"].astype(int) == 1, "Yes", "No")
+    if len(df) > TELCO_SAMPLE_ROWS:
+        df = df.groupby("churn", group_keys=False).sample(
+            frac=TELCO_SAMPLE_ROWS / len(df), random_state=SEED
+        )
+    df["customer_id"] = df["customer_id"].str[:12]  # shorter, still unique, still anonymous
+    return df.sample(frac=1.0, random_state=SEED).reset_index(drop=True)
+
+
+TELCO_CARD = {
+    "key": "lk_telco_churn",
+    "title": "Sri Lankan telco customer churn (real, public)",
+    "problem_type": "classification",
+    "target": "churn",
+    "provenance": "Public dataset: 'Real World Customer Churn Dataset in Telco Domain' by Lasal "
+    "Jayawardena, https://www.kaggle.com/datasets/lasaljaywardena/real-world-churn. Features "
+    "derived by scripts/fetch_public_datasets.py; stratified random sample of 15,000 customers.",
+    "is_synthetic": False,
+    "description": "One row per anonymised customer: first-month (days 1-30) usage totals, "
+    "active days and trend for each of 12 services (apps, packs, call types), and whether "
+    "the customer churned.",
+    "context": "Genuine anonymised data from one of the largest telecom operators in Sri Lanka "
+    "(January-March 2023), including Sri Lankan apps such as Helakuru.",
+    "license": "CC0-1.0",
+    "collection_period": "1 January to 31 March 2023",
+    "features": {
+        "customer_id": "Anonymised hashed customer ID (identifier, excluded)",
+        "<service>_m1_total": "Total usage in days 1-30 (MB for apps, LKR for packs, minutes "
+        "for calls)",
+        "<service>_m1_active_days": "Days with any use in days 1-30",
+        "<service>_m1_trend": "Average daily use in days 21-30 minus days 1-10",
+        "active_days_61_90_any_service": "Days with any use in days 61-90 (LEAKAGE: observed "
+        "after the churn window)",
+        "churn": "Target: Yes if the customer left the operator",
+    },
+    "target_definition": "churn = 'Yes' if the customer churned during the observation period "
+    "(author's label).",
+    "known_limitations": [
+        "Usage data only (no plan, price, complaints or demographics).",
+        "One operator and one quarter.",
+        "active_days_61_90_any_service is kept deliberately as a leakage example and must be "
+        "excluded.",
+    ],
+    "anonymisation": "Hashed customer IDs only; no names, numbers, locations or demographics.",
+    "recommended_exclusions": ["customer_id", "active_days_61_90_any_service"],
+}
+
+
+def fetch_telco(kaggle_dir: str | None) -> None:
+    folder = _kaggle_dir(kaggle_dir or os.environ.get("TABULAML_KAGGLE_DIR"))
+    _write(build_telco(folder), TELCO_CARD)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument("dataset", choices=["dengue", "telco", "all"])
+    parser.add_argument("--kaggle-dir", help="folder containing the extracted Kaggle files")
+    args = parser.parse_args()
+    if args.dataset in ("dengue", "all"):
+        fetch_dengue()
+    if args.dataset in ("telco", "all"):
+        fetch_telco(args.kaggle_dir)
+
+
+if __name__ == "__main__":
+    main()

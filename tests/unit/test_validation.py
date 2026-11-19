@@ -66,8 +66,12 @@ def test_suggest_problem_type(regression_df, messy_df):
 @pytest.mark.parametrize(
     ("key", "leak", "safe"),
     [
-        ("lk_telecom_churn", "disconnection_date", ["tenure_months", "age", "district"]),
-        ("lk_patient_los", "total_bill_lkr", ["age", "diagnosis_group", "platelet_count_k"]),
+        ("lk_synthetic_telecom_churn", "disconnection_date", ["tenure_months", "age", "district"]),
+        (
+            "lk_synthetic_patient_los",
+            "total_bill_lkr",
+            ["age", "diagnosis_group", "platelet_count_k"],
+        ),
     ],
 )
 def test_planted_leakage_is_flagged_and_safe_columns_are_not(key, leak, safe):

@@ -1,0 +1,182 @@
+"""Core immutable data contracts shared by every layer (see docs/02_ARCHITECTURE.md §4.1)."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from enum import Enum
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+LOWER_IS_BETTER = frozenset({"rmse", "mae", "medae", "mape", "log_loss"})
+
+
+class ProblemType(str, Enum):
+    CLASSIFICATION = "classification"
+    REGRESSION = "regression"
+
+
+class FeatureType(str, Enum):
+    NUMERIC = "numeric"
+    CATEGORICAL = "categorical"
+    BOOLEAN = "boolean"
+    DATETIME = "datetime"
+    TEXT = "text"
+    IDENTIFIER = "identifier"
+    CONSTANT = "constant"
+
+
+class ModelProfile(str, Enum):
+    TREE = "tree"
+    SCALE_SENSITIVE = "scale_sensitive"
+
+
+class ImbalanceStrategy(str, Enum):
+    NONE = "none"
+    CLASS_WEIGHT = "class_weight"
+    SMOTE = "smote"
+    UNDERSAMPLE = "undersample"
+
+
+@dataclass(frozen=True)
+class ColumnProfile:
+    name: str
+    raw_dtype: str
+    inferred_type: FeatureType
+    missing_ratio: float
+    n_unique: int
+    unique_ratio: float
+    sample_values: tuple[str, ...]
+    skewness: float | None = None
+    outlier_ratio: float | None = None
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DatasetSchema:
+    columns: tuple[ColumnProfile, ...]
+    n_rows: int
+    n_duplicate_rows: int
+
+    def get(self, name: str) -> ColumnProfile:
+        for col in self.columns:
+            if col.name == name:
+                return col
+        raise KeyError(name)
+
+    def names_of(self, feature_type: FeatureType) -> list[str]:
+        return [c.name for c in self.columns if c.inferred_type == feature_type]
+
+
+@dataclass(frozen=True)
+class ColumnConfig:
+    name: str
+    feature_type: FeatureType
+    include: bool = True
+    impute: str = "auto"  # auto|median|mean|most_frequent|constant|knn
+    encoding: str = "auto"  # auto|onehot|ordinal|target
+    scaling: str = "auto"  # auto|standard|robust|minmax|none
+    transform: str = "auto"  # auto|yeo_johnson|none
+    outliers: str = "auto"  # auto|iqr_clip|none
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class PreprocessingConfig:
+    problem_type: ProblemType
+    target: str
+    mode: str  # "auto" | "custom"
+    columns: tuple[ColumnConfig, ...]
+    missing_indicator: bool = True
+    rare_category_min_frequency: float = 0.01
+    high_cardinality_threshold: int = 20
+    normalize_category_case: bool = True
+    imbalance: ImbalanceStrategy = ImbalanceStrategy.NONE
+    target_transform: str = "none"  # none|log1p
+    test_size: float = 0.2
+    cv_folds: int = 5
+    random_state: int = 42
+    explanations: tuple[str, ...] = ()
+
+    def included(self) -> list[ColumnConfig]:
+        return [c for c in self.columns if c.include]
+
+    def with_column(self, cfg: ColumnConfig) -> PreprocessingConfig:
+        """Return a NEW config with the column of the same name replaced (or appended)."""
+        if any(c.name == cfg.name for c in self.columns):
+            cols = tuple(cfg if c.name == cfg.name else c for c in self.columns)
+        else:
+            cols = (*self.columns, cfg)
+        return replace(self, columns=cols)
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    level: str  # error|warning|info
+    code: str
+    message: str
+    column: str | None = None
+
+
+@dataclass(frozen=True)
+class ModelResult:
+    key: str
+    name: str
+    status: str  # ok|failed
+    cv_scores: dict[str, tuple[float, ...]]
+    test_metrics: dict[str, float]
+    fit_seconds: float
+    predict_seconds: float
+    error: str | None = None
+    pipeline: Any = field(default=None, repr=False, compare=False)
+    y_pred: Any = field(default=None, repr=False, compare=False)
+    y_proba: Any = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class TrainingRun:
+    problem_type: ProblemType
+    config: PreprocessingConfig
+    primary_metric: str
+    results: tuple[ModelResult, ...]
+    class_labels: tuple[str, ...] | None
+    X_test: Any = field(repr=False, compare=False)
+    y_test: Any = field(repr=False, compare=False)
+    feature_columns: tuple[str, ...] = ()
+    versions: dict[str, str] = field(default_factory=dict)
+    notes: tuple[str, ...] = ()
+
+    def leaderboard(self) -> pd.DataFrame:
+        """One row per model, best first by CV mean of the primary metric; failed rows last."""
+        rows = [self._row(r) for r in self.results]
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return df
+        key = f"cv_{self.primary_metric}_mean"
+        ascending = self.primary_metric in LOWER_IS_BETTER
+        df["_failed"] = df["status"] != "ok"
+        df = df.sort_values(["_failed", key], ascending=[True, ascending], na_position="last")
+        return df.drop(columns="_failed").reset_index(drop=True)
+
+    def _row(self, r: ModelResult) -> dict[str, Any]:
+        row: dict[str, Any] = {"model": r.name, "key": r.key, "status": r.status}
+        for metric, scores in r.cv_scores.items():
+            arr = np.asarray(scores, dtype=float)
+            row[f"cv_{metric}_mean"] = float(arr.mean()) if arr.size else np.nan
+            row[f"cv_{metric}_std"] = float(arr.std()) if arr.size else np.nan
+        for metric, value in r.test_metrics.items():
+            row[f"test_{metric}"] = value
+        row["fit_s"] = r.fit_seconds
+        row["predict_s"] = r.predict_seconds
+        if r.error:
+            row["error"] = r.error
+        return row
+
+    def best(self) -> ModelResult:
+        board = self.leaderboard()
+        ok = board[board["status"] == "ok"]
+        if ok.empty:
+            raise ValueError("No model trained successfully")
+        best_key = ok.iloc[0]["key"]
+        return next(r for r in self.results if r.key == best_key)

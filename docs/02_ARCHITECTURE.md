@@ -142,6 +142,8 @@ TabulaML/
 
 ## 4. Contracts (source of truth — implement exactly these)
 
+> **Implemented-version deltas** (numpy output from the builder, `recommend_config(..., y)`, `build_model_pipeline(..., base_keys, as_base)`, `clean_target`, `save_bundle(..., input_spec)`, `TrainingRun.notes`/`result_for`, sample registry discovery) are recorded in `docs/PROGRESS.md` → *Contract changes log*. Where they differ from this section, the code and that log win.
+
 ### 4.1 `tabulaml/core/types.py`
 
 ```python

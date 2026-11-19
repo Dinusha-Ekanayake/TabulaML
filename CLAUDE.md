@@ -28,7 +28,7 @@ python scripts/benchmark.py --quick
 5. A failing model must not abort a run. Return `ModelResult(status="failed")`.
 6. Unseen categories and missing columns at prediction time must never crash.
 7. Tests first (pytest). Coverage on `tabulaml/` excluding `ui/` must be at least 80 %. Functions under 50 lines, files under 400 lines. Use type hints. No `print`; use `logging`.
-8. Sample datasets are **synthetic Sri Lankan-context data**. Always label them that way. Never use real company, hospital or person names.
+8. Samples: `lk_colombo_dengue` and `lk_telco_churn` are **real public CC0 data** (keep their attribution); `lk_synthetic_*` are **synthetic Sri Lankan-context data** and must always be labelled synthetic. Never invent real company, hospital or person names.
 9. Git: do not commit unless the user asks. Commit messages use conventional commits. **Never add Claude/AI co-author or "Generated with" lines.**
 10. If the plan conflicts with the contracts, the contracts win. If a contract must change, edit `docs/02_ARCHITECTURE.md §4` in the same change and say so.
 

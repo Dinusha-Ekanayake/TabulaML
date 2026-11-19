@@ -154,7 +154,9 @@ def _wilcoxon(results: pd.DataFrame) -> pd.DataFrame:
                 "rf_mean": rf.mean(),
                 "best_booster": NAMES[best],
                 "booster_mean": bo.mean(),
-                "winner": "Random Forest" if rf_better else NAMES[best],
+                "winner": "tie"
+                if np.isclose(rf.mean(), bo.mean(), rtol=0, atol=1e-6)
+                else ("Random Forest" if rf_better else NAMES[best]),
                 "wilcoxon_p": pvalue,
                 "significant_5pct": bool(pvalue < 0.05) if not np.isnan(pvalue) else False,
             }
@@ -206,24 +208,40 @@ def _ablation(folds: int) -> pd.DataFrame:
 
 
 def _figure(summary: pd.DataFrame, path: Path) -> None:
+    """Dot + std whiskers on a zoomed axis (bars from zero would hide 0.99 vs 0.995).
+    Best model on top in every panel; Random Forest highlighted."""
     datasets = summary["dataset"].unique()
-    fig, axes = plt.subplots(1, len(datasets), figsize=(3.6 * len(datasets), 3.4), squeeze=False)
-    for ax, dataset in zip(axes[0], datasets, strict=True):
-        part = summary[summary["dataset"] == dataset].sort_values("mean")
-        colors = ["#184f95" if m == "Random Forest" else "#2a78d6" for m in part["model"]]
-        ax.barh(
-            part["model"],
-            part["mean"],
-            xerr=part["std"],
-            color=colors,
-            height=0.6,
-            error_kw={"ecolor": "#8c8b86"},
-        )
-        ax.set_title(f"{dataset}\n{part['metric'].iloc[0]}", fontsize=9)
+    fig, axes = plt.subplots(2, (len(datasets) + 1) // 2, figsize=(13, 6.4), squeeze=False)
+    for ax, dataset in zip(axes.flat, datasets, strict=False):
+        part = summary[summary["dataset"] == dataset]
+        metric = part["metric"].iloc[0]
+        lower = metric in ("rmse", "mae")
+        part = part.sort_values("mean", ascending=not lower)  # worst first = bottom, best on top
+        for i, row in enumerate(part.itertuples()):
+            is_rf = row.model == "Random Forest"
+            ax.errorbar(
+                row.mean,
+                i,
+                xerr=row.std,
+                fmt="o",
+                markersize=7 if is_rf else 6,
+                color="#184f95" if is_rf else "#2a78d6",
+                ecolor="#8c8b86",
+                elinewidth=1.5,
+                capsize=3,
+            )
+        ax.set_yticks(range(len(part)), part["model"])
+        for label in ax.get_yticklabels():
+            label.set_fontweight("bold" if label.get_text() == "Random Forest" else "normal")
+        arrow = "lower is better" if lower else "higher is better"
+        ax.set_title(f"{dataset}\n{metric} ({arrow})", fontsize=9)
         ax.tick_params(labelsize=8)
-        ax.grid(axis="x", alpha=0.2)
+        ax.grid(axis="x", alpha=0.25)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
+    for ax in list(axes.flat)[len(datasets) :]:
+        ax.set_visible(False)
+    fig.suptitle("Mean +/- std over 15 paired CV folds (Random Forest in bold)", fontsize=10)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -273,21 +291,7 @@ def _markdown(summary, tests, ablation, folds, repeats) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
-    )
-    parser.add_argument("--quick", action="store_true")
-    args = parser.parse_args()
-    folds, repeats = (3, 1) if args.quick else (5, 3)
-    warnings.filterwarnings("ignore")
-    rows = []
-    for name, df, target, ptype, origin in _datasets(args.quick):
-        print(f"Benchmarking {name} ...")
-        rows += _evaluate(name, df, target, ptype, origin, folds, repeats)
-    results = pd.DataFrame(rows)
-    (REPORTS / "figures").mkdir(parents=True, exist_ok=True)
-    results.to_csv(REPORTS / "benchmark_results.csv", index=False)
+def _write_outputs(results: pd.DataFrame, folds: int, repeats: int) -> None:
     primary = results.groupby("dataset")["metric"].transform("first")
     summary = (
         results[results["metric"] == primary]
@@ -297,12 +301,39 @@ def main() -> None:
     )
     tests = _wilcoxon(results[results["metric"] == primary])
     ablation = _ablation(folds)
+    (REPORTS / "figures").mkdir(parents=True, exist_ok=True)
     _figure(summary, REPORTS / "figures" / "benchmark_primary_metric.png")
     (REPORTS / "benchmark_summary.md").write_text(
         _markdown(summary, tests, ablation, folds, repeats), encoding="utf-8"
     )
     print(tests.to_string(index=False))
     print(ablation.to_string(index=False))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument("--quick", action="store_true")
+    parser.add_argument(
+        "--replot",
+        action="store_true",
+        help="rebuild summary and figure from reports/benchmark_results.csv",
+    )
+    args = parser.parse_args()
+    folds, repeats = (3, 1) if args.quick else (5, 3)
+    warnings.filterwarnings("ignore")
+    if args.replot:
+        _write_outputs(pd.read_csv(REPORTS / "benchmark_results.csv"), folds, repeats)
+        return
+    rows = []
+    for name, df, target, ptype, origin in _datasets(args.quick):
+        print(f"Benchmarking {name} ...")
+        rows += _evaluate(name, df, target, ptype, origin, folds, repeats)
+    results = pd.DataFrame(rows)
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    results.to_csv(REPORTS / "benchmark_results.csv", index=False)
+    _write_outputs(results, folds, repeats)
 
 
 if __name__ == "__main__":

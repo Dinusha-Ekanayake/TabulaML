@@ -33,5 +33,6 @@
     "The first two weeks have missing lag values (handled by imputation)."
   ],
   "anonymisation": "Aggregate counts only; no individual patient data.",
-  "recommended_exclusions": []
+  "recommended_exclusions": [],
+  "source_url": "https://github.com/thiyangt/colmozzie"
 }

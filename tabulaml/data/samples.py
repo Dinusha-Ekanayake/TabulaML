@@ -34,6 +34,7 @@ class DatasetCard:
     known_limitations: tuple[str, ...]
     anonymisation: str
     recommended_exclusions: tuple[str, ...]
+    source_url: str = ""
 
 
 def _card_from_json(path: Path) -> DatasetCard:
@@ -54,6 +55,7 @@ def _card_from_json(path: Path) -> DatasetCard:
         known_limitations=tuple(raw.get("known_limitations", ())),
         anonymisation=raw.get("anonymisation", ""),
         recommended_exclusions=tuple(raw.get("recommended_exclusions", ())),
+        source_url=raw.get("source_url", ""),
     )
 
 

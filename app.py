@@ -6,7 +6,7 @@ import logging
 
 import streamlit as st
 
-from tabulaml.ui.components import inject_css, sidebar_stepper
+from tabulaml.ui.components import footer, inject_css, sidebar_stepper
 from tabulaml.ui.state import can_enter, get_state, set_state
 from tabulaml.ui.steps import (
     s1_problem,
@@ -40,3 +40,4 @@ except Exception as exc:  # noqa: BLE001 - never show a raw traceback to the use
     logging.getLogger("tabulaml").exception("UI step failed")
     st.error(f"Something went wrong: {type(exc).__name__}: {exc}")
     st.caption("Try going back a step, or use 'Start over' in the sidebar.")
+footer(get_state())

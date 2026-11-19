@@ -106,6 +106,7 @@ TEA_COMMON = {
     "Across Sri Lankan Tea Market Catalogues' (MERCon 2026).",
     "is_synthetic": False,
     "file": TEA_FILE,
+    "source_url": "https://huggingface.co/datasets/colombo-tea-auction-prices/cta-price-prediction",
     "context": "Genuine Sri Lankan market data: the Colombo Tea Auction, one of the world's "
     "largest tea auctions, with weather for the growing regions.",
     "license": "CC-BY-4.0 (attribution required)",
@@ -190,6 +191,7 @@ def build_dengue(raw: pd.DataFrame) -> pd.DataFrame:
 
 DENGUE_CARD = {
     "key": "lk_colombo_dengue",
+    "source_url": "https://github.com/thiyangt/colmozzie",
     "title": "Colombo weekly dengue cases and weather (real, public)",
     "problem_type": "regression",
     "target": "dengue_cases",
@@ -306,6 +308,7 @@ def build_telco(folder: Path) -> pd.DataFrame:
 
 TELCO_CARD = {
     "key": "lk_telco_churn",
+    "source_url": "https://www.kaggle.com/datasets/lasaljaywardena/real-world-churn",
     "title": "Sri Lankan telco customer churn (real, public)",
     "problem_type": "classification",
     "target": "churn",

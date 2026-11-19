@@ -43,7 +43,7 @@ def test_classification_flow_end_to_end():
     assert "category" in warnings  # real structural leak surfaced in the quality report
     at = _click(at, "next_4")
     for key in ("m_logreg", "m_rf"):
-        at.checkbox(key=key).check()
+        at.toggle(key=key).set_value(True)
     at = at.run()
     at = _click(at, "train")
     _no_errors(at)
@@ -63,8 +63,8 @@ def test_regression_flow_on_real_dengue_data():
     at = at.run()
     _no_errors(at)
     at = _click(at, "next_4")
-    at.checkbox(key="m_ridge").check()
-    at.checkbox(key="m_rf").check()
+    at.toggle(key="m_ridge").set_value(True)
+    at.toggle(key="m_rf").set_value(True)
     at = at.run()
     at = _click(at, "train")
     _no_errors(at)
@@ -79,3 +79,26 @@ def test_changing_problem_type_resets_downstream_state():
     at = _click(at, "choose_regression")
     state = at.session_state["tml_state"]
     assert state.raw_df is None and state.config is None and state.step == 2
+
+
+def _footer_html(at: AppTest) -> str:
+    return " ".join(str(m.value) for m in at.markdown if "tml-footer" in str(m.value))
+
+
+def test_footer_on_every_step_with_dataset_attribution():
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT).run()
+    assert "No dataset loaded" in _footer_html(at) or "no dataset loaded" in _footer_html(at)
+    at = _to_step3("regression", "dengue")
+    html = _footer_html(at)
+    assert "CC0" in html and "colmozzie" in html and "GitHub repository" in html
+
+
+def test_model_cards_and_selection_bar():
+    at = _to_step3("classification", "Tea Auction")
+    at = _click(at, "next_4")
+    _no_errors(at)
+    at = _click(at, "rec_set")
+    assert at.toggle(key="m_rf").value and at.toggle(key="m_catboost").value
+    assert any("5 selected" in str(m.value) for m in at.markdown)
+    at = _click(at, "none_Boosting")
+    assert not at.toggle(key="m_xgb").value

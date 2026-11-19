@@ -12,6 +12,7 @@ from tabulaml.models.registry import ENSEMBLE_KEYS, RECOMMENDED, list_models
 from tabulaml.training.trainer import prepare_data, train_models
 from tabulaml.ui.components import nav_buttons
 from tabulaml.ui.helpers import metric_label
+from tabulaml.ui.model_meta import GROUP_ICONS, SPEED_CLASS, meta_for
 from tabulaml.ui.state import AppState, get_state, reset_from, set_state
 
 PROFILE_BADGE = {
@@ -21,23 +22,80 @@ PROFILE_BADGE = {
 MIN_BASES = 2
 
 
-def _model_checkboxes(state: AppState) -> list[str]:
-    selected = []
+def _init_selection(state: AppState) -> None:
+    """Seed widget state once so cards never mix `value=` with session-state updates."""
+    for spec in list_models(state.problem_type):
+        st.session_state.setdefault(f"m_{spec.key}", spec.key in state.selected_models)
+
+
+def _tags(spec) -> str:  # noqa: ANN001 - ModelSpec
+    speed, _ = meta_for(spec.key)
+    pipeline = "ensemble" if spec.key in ENSEMBLE_KEYS else PROFILE_BADGE[spec.profile]
+    return (
+        f'<span class="tml-tag">{pipeline}</span>'
+        f'<span class="tml-tag {SPEED_CLASS[speed]}">{speed}</span>'
+    )
+
+
+def _card(spec, icon: str) -> None:  # noqa: ANN001 - ModelSpec
+    _, best_for = meta_for(spec.key)
+    with st.container(border=True, key=f"card_{spec.key}"):
+        st.markdown(f"{icon} **{spec.name}**")
+        st.markdown(_tags(spec), unsafe_allow_html=True)
+        st.caption(f"**Best for:** {best_for}  \n{spec.description}")
+        st.toggle("Include", key=f"m_{spec.key}")
+
+
+def _group_header(group: str, members: list, icon: str) -> None:
+    chosen = sum(bool(st.session_state.get(f"m_{s.key}")) for s in members)
+    left, mid, right = st.columns([6, 1, 1])
+    left.markdown(
+        f"#### {icon} {group} <small>· {chosen} of {len(members)} selected</small>",
+        unsafe_allow_html=True,
+    )
+    if mid.button("All", key=f"all_{group}", width="stretch"):
+        for s in members:
+            st.session_state[f"m_{s.key}"] = True
+        st.rerun()
+    if right.button("None", key=f"none_{group}", width="stretch"):
+        for s in members:
+            st.session_state[f"m_{s.key}"] = False
+        st.rerun()
+
+
+def _model_cards(state: AppState) -> list[str]:
+    _init_selection(state)
     specs = list_models(state.problem_type)
-    for group, members in groupby(specs, key=lambda s: s.group):
-        st.markdown(f"**{group}**")
+    for group, members_iter in groupby(specs, key=lambda s: s.group):
+        members = list(members_iter)
+        icon = GROUP_ICONS.get(group, ":material/category:")
+        _group_header(group, members, icon)
         cols = st.columns(3)
         for i, spec in enumerate(members):
             with cols[i % 3]:
-                badge = "ensemble" if spec.key in ENSEMBLE_KEYS else PROFILE_BADGE[spec.profile]
-                if st.checkbox(
-                    spec.name,
-                    value=spec.key in state.selected_models,
-                    key=f"m_{spec.key}",
-                    help=f"{spec.description} ({badge})",
-                ):
-                    selected.append(spec.key)
-    return selected
+                _card(spec, icon)
+    return [s.key for s in specs if st.session_state.get(f"m_{s.key}")]
+
+
+def _selection_bar(state: AppState) -> None:
+    names = {s.key: s.name for s in list_models(state.problem_type)}
+    chosen = [names[k] for k in names if st.session_state.get(f"m_{k}")]
+    with st.container(border=True):
+        left, b1, b2 = st.columns([6, 1.3, 1])
+        if chosen:
+            chips = "".join(f'<span class="tml-chip">{n}</span>' for n in chosen)
+            left.markdown(f"**{len(chosen)} selected** &nbsp; {chips}", unsafe_allow_html=True)
+        else:
+            left.markdown(
+                "**No models selected yet.** Pick cards below or use the recommended set."
+            )
+        if b1.button("Recommended set", key="rec_set", width="stretch"):
+            _set_recommended(state)
+            st.rerun()
+        if b2.button("Clear", key="clear_set", width="stretch"):
+            for key in names:
+                st.session_state[f"m_{key}"] = False
+            st.rerun()
 
 
 def _ensemble_bases(state: AppState, selected: list[str]) -> dict[str, tuple[str, ...]]:
@@ -118,15 +176,13 @@ def _train(state: AppState, selected: list[str], bases: dict, primary: str) -> N
 
 def render(state: AppState) -> None:
     st.header("4. Choose models")
-    top = st.columns([1, 1, 4])
-    if top[0].button("Recommended set", key="rec_set"):
-        _set_recommended(state)
-        st.rerun()
-    if top[1].button("Clear", key="clear_set"):
-        for spec in list_models(state.problem_type):
-            st.session_state[f"m_{spec.key}"] = False
-        st.rerun()
-    selected = _model_checkboxes(state)
+    st.caption(
+        "Compare Random Forest with boosting, linear baselines and ensembles. Each "
+        "model gets the preprocessing pipeline that suits it."
+    )
+    _init_selection(state)
+    _selection_bar(state)
+    selected = _model_cards(state)
     bases = _ensemble_bases(state, selected)
     _, y, _, _ = prepare_data(state.raw_df, state.config)
     primary = _primary_metric(state, y)

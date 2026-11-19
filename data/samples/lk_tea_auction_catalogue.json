@@ -47,5 +47,6 @@
     "avg_weather_severity": "Composite weather severity score from the report text",
     "fx_usd": "USD/LKR exchange rate"
   },
-  "anonymisation": "Market prices only; no personal data."
+  "anonymisation": "Market prices only; no personal data.",
+  "source_url": "https://huggingface.co/datasets/colombo-tea-auction-prices/cta-price-prediction"
 }

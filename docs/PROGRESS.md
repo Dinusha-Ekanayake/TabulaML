@@ -4,7 +4,7 @@
 |---|---|---|---|---|
 | 0 | Scaffold & environment | Sonnet | ☑ | venv at .venv, sklearn 1.5.2, ruff clean, Graphify graph built |
 | 1 | Core types, loader, sample datasets | Sonnet | ☑ | 27 tests, 95% coverage; churn 4999x24, LOS 2999x22 |
-| 2 | Cleaning, profiling, validation | Sonnet + ⚑ Opus review | ☐ | |
+| 2 | Cleaning, profiling, validation | Sonnet + ⚑ Opus review | ☑ (Opus review pending) | 65 tests, 95% coverage; leak columns flagged in both samples |
 | 3 | Preprocessing engine | Sonnet + ⚑ Opus review | ☐ | |
 | 4 | Model registry, ensembles, hybrid | Sonnet | ☐ | R1 compatibility gate |
 | 5 | Training & evaluation engine | Sonnet + ⚑ Opus review | ☐ | |

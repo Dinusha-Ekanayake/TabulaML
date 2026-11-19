@@ -243,7 +243,7 @@ def generate_patient_los(seed: int, n: int = 2970) -> pd.DataFrame:
     )
     los = np.clip(np.round(np.exp(mu + rng.normal(0, 0.4, n)) * 0.9), 1, 60).astype(int)
     ward = rng.choice(["General", "Semi-private", "Private"], n, p=[0.75, 0.15, 0.1])
-    mult = pd.Series(ward).map({"General": 1.0, "Semi-private": 1.8, "Private": 3.0}).to_numpy()
+    mult = pd.Series(ward).map({"General": 1.0, "Semi-private": 1.1, "Private": 1.25}).to_numpy()
     admit = REFERENCE_DATE - pd.to_timedelta(rng.integers(0, 730, n), unit="D")
     bmi = np.clip(rng.normal(24.5, 4.5, n), 13, 50).round(1)
     ckd = np.where(diag == "CKD/CKDu", rng.integers(1, 6, n), np.nan)

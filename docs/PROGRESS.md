@@ -12,7 +12,7 @@
 | 6 | Inference & persistence | Opus | done | Predictor + joblib bundles; save_bundle takes input_spec instead of schema |
 | 7 | UI steps 1-3 | Opus | done | frozen AppState; editor <-> config helpers tested |
 | 8 | UI steps 4-6 | Opus | done | AppTest drives full wizard (classification + real dengue regression) |
-| 9 | Generalization proof & benchmark | | todo | |
+| 9 | Generalization proof & benchmark | Opus | done | 12 datasets incl. 6 random chaos frames; repeated-CV benchmark + Wilcoxon + ablation |
 | 10 | Docs, report, polish | | todo | |
 
 ## Datasets

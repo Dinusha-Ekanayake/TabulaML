@@ -3,3 +3,4 @@ pytest
 pytest-cov
 ruff
 kagglehub  # only for scripts/fetch_public_datasets.py telco
+matplotlib  # only for scripts/benchmark.py figures

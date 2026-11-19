@@ -5,29 +5,11 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from tabulaml.models import registry
-
 APP = str(Path(__file__).resolve().parents[2] / "app.py")
 TIMEOUT = 300
 
 
-@pytest.fixture(autouse=True)
-def _fast_models(monkeypatch):
-    original = registry.get_model
-
-    def small(key):
-        spec = original(key)
-
-        def factory(ptype, rs, _f=spec.factory):
-            est = _f(ptype, rs)
-            for name in ("n_estimators", "iterations"):
-                if name in est.get_params():
-                    est.set_params(**{name: 30})
-            return est
-
-        return spec.__class__(**{**spec.__dict__, "factory": factory})
-
-    monkeypatch.setattr("tabulaml.training.pipeline_factory.get_model", small)
+pytestmark = pytest.mark.usefixtures("fast_models")
 
 
 def _no_errors(at: AppTest) -> None:

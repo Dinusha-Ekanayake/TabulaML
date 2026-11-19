@@ -9,7 +9,6 @@ from tabulaml.data.profiler import profile_dataset
 from tabulaml.data.samples import load_sample
 from tabulaml.data.validation import detect_leakage
 from tabulaml.evaluation.importance import permutation_importance_df
-from tabulaml.models import registry
 from tabulaml.preprocessing.cleaning import clean_frame
 from tabulaml.preprocessing.recommender import recommend_config
 from tabulaml.training.trainer import prepare_data, train_models
@@ -17,25 +16,7 @@ from tabulaml.training.trainer import prepare_data, train_models
 CLS, REG = ProblemType.CLASSIFICATION, ProblemType.REGRESSION
 
 
-@pytest.fixture(autouse=True)
-def _small_models(monkeypatch):
-    """Shrink boosted/bagged models so integration tests stay quick."""
-    original = registry.get_model
-
-    def small(key):
-        spec = original(key)
-
-        def factory(ptype, rs, _f=spec.factory):
-            est = _f(ptype, rs)
-            params = est.get_params()
-            for name, value in (("n_estimators", 40), ("iterations", 40)):
-                if name in params:
-                    est.set_params(**{name: value})
-            return est
-
-        return spec.__class__(**{**spec.__dict__, "factory": factory})
-
-    monkeypatch.setattr("tabulaml.training.pipeline_factory.get_model", small)
+pytestmark = pytest.mark.usefixtures("fast_models")
 
 
 def _auto_config(key, **overrides):

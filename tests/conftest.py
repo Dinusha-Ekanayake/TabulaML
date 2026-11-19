@@ -4,6 +4,30 @@ import numpy as np
 import pandas as pd
 import pytest
 
+FAST_TREES = 30
+
+
+@pytest.fixture
+def fast_models(monkeypatch):
+    """Shrink boosted/bagged models (n_estimators / iterations) so tests stay quick."""
+    from tabulaml.models import registry
+
+    original = registry.get_model
+
+    def small(key):
+        spec = original(key)
+
+        def factory(ptype, rs, _f=spec.factory):
+            est = _f(ptype, rs)
+            for name in ("n_estimators", "iterations"):
+                if name in est.get_params():
+                    est.set_params(**{name: FAST_TREES})
+            return est
+
+        return spec.__class__(**{**spec.__dict__, "factory": factory})
+
+    monkeypatch.setattr("tabulaml.training.pipeline_factory.get_model", small)
+
 
 @pytest.fixture
 def messy_df() -> pd.DataFrame:

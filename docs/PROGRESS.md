@@ -10,8 +10,8 @@
 | 4 | Model registry, ensembles, hybrid | Opus | done | R1 gate passed on sklearn 1.5.2; pipeline_factory done early |
 | 5 | Training & evaluation engine | Opus | done | 171 tests, 96% coverage; real dengue data trains (RF R2 > 0.3) |
 | 6 | Inference & persistence | Opus | done | Predictor + joblib bundles; save_bundle takes input_spec instead of schema |
-| 7 | UI steps 1-3 | | todo | |
-| 8 | UI steps 4-6 | | todo | |
+| 7 | UI steps 1-3 | Opus | done | frozen AppState; editor <-> config helpers tested |
+| 8 | UI steps 4-6 | Opus | done | AppTest drives full wizard (classification + real dengue regression) |
 | 9 | Generalization proof & benchmark | | todo | |
 | 10 | Docs, report, polish | | todo | |
 

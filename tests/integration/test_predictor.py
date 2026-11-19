@@ -1,0 +1,99 @@
+import io
+
+import joblib
+import numpy as np
+import pandas as pd
+import pytest
+
+from tabulaml.data.profiler import profile_dataset
+from tabulaml.data.samples import load_sample
+from tabulaml.data.validation import detect_leakage
+from tabulaml.inference.persistence import bundle_bytes, load_bundle, save_bundle
+from tabulaml.inference.predictor import Predictor, make_input_spec
+from tabulaml.preprocessing.cleaning import clean_frame
+from tabulaml.preprocessing.recommender import recommend_config
+from tabulaml.training.trainer import train_models
+
+
+def _trained(key, model="rf"):
+    df, card = load_sample(key)
+    clean = clean_frame(df)
+    leaks = detect_leakage(clean, card.target, card.problem_type)
+    cfg = recommend_config(
+        profile_dataset(clean), card.target, card.problem_type, leaks, y=df[card.target]
+    )
+    cfg = cfg.__class__(**{**cfg.__dict__, "cv_folds": 2})
+    run = train_models(df, cfg, [model])
+    result = run.result_for(model)
+    spec = make_input_spec(df[list(run.feature_columns)], cfg)
+    return df, run, result, Predictor(result.pipeline, cfg, run.class_labels, spec), spec
+
+
+@pytest.fixture(scope="module")
+def churn():
+    return _trained("lk_synthetic_telecom_churn", "logreg")
+
+
+def test_input_spec_has_defaults(churn):
+    _, run, _, predictor, _ = churn
+    spec = {s["name"]: s for s in predictor.input_spec()}
+    assert set(spec) == set(run.feature_columns)
+    assert spec["tenure_months"]["type"] == "numeric" and spec["tenure_months"]["default"] >= 0
+    assert "Colombo" in spec["district"]["options"]
+    assert spec["has_idd_pack"]["type"] == "boolean"
+
+
+def test_single_prediction_with_unseen_category_and_missing_value(churn):
+    _, _, _, predictor, spec = churn
+    record = {s["name"]: s["default"] for s in spec}
+    record["district"] = "Atlantis"
+    record["age"] = None
+    out = predictor.predict_one(record)
+    assert out["prediction"] in ("Yes", "No")
+    assert sum(out["probabilities"].values()) == pytest.approx(1.0)
+
+
+def test_batch_with_shuffled_and_extra_columns(churn):
+    df, run, _, predictor, _ = churn
+    batch = df.head(20).copy()
+    batch = batch[list(reversed(batch.columns))].assign(junk=1)
+    issues = {i.code for i in predictor.validate_input(batch)}
+    assert "extra_columns" in issues
+    out = predictor.predict_batch(batch)
+    assert {"prediction", "proba_Yes", "proba_No"} <= set(out.columns)
+    assert len(out) == 20 and "prediction" not in batch.columns  # input not mutated
+
+
+def test_batch_missing_column_is_an_error(churn):
+    df, _, _, predictor, _ = churn
+    bad = df.head(5).drop(columns=["tenure_months"])
+    assert "missing_columns" in {i.code for i in predictor.validate_input(bad)}
+    with pytest.raises(ValueError, match="tenure_months"):
+        predictor.predict_batch(bad)
+    assert "empty_input" in {i.code for i in predictor.validate_input(df.head(0))}
+
+
+def test_save_load_roundtrip_gives_identical_predictions(churn, tmp_path):
+    df, run, result, predictor, spec = churn
+    path = save_bundle(tmp_path, result, run, spec)
+    loaded = load_bundle(path)
+    a = predictor.predict_batch(df.head(30))["prediction"]
+    b = loaded.predict_batch(df.head(30))["prediction"]
+    pd.testing.assert_series_equal(a, b)
+    from_bytes = load_bundle(bundle_bytes(result, run, spec))
+    assert from_bytes.class_labels == ("No", "Yes")
+
+
+def test_load_rejects_foreign_pickles(tmp_path):
+    buffer = io.BytesIO()
+    joblib.dump({"hello": 1}, buffer)
+    with pytest.raises(ValueError, match="Not a TabulaML"):
+        load_bundle(buffer.getvalue())
+
+
+def test_regression_predictor_returns_floats_on_original_scale():
+    df, _, _, predictor, spec = _trained("lk_synthetic_patient_los")
+    out = predictor.predict_one({s["name"]: s["default"] for s in spec})
+    assert isinstance(out["prediction"], float) and out["probabilities"] is None
+    assert 0.5 < out["prediction"] < 80  # log1p target transformed back to days
+    assert np.isfinite(predictor.predict_batch(df.head(10))["prediction"].astype(float)).all()

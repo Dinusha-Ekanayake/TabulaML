@@ -12,7 +12,7 @@ Shared by the UI, the benchmark and the tests so all of them derive the same spl
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -71,6 +71,8 @@ class AutoResult:
     config: PreprocessingConfig
     n_dev: int
     n_test: int
+    clean_all: pd.DataFrame | None = field(default=None, repr=False, compare=False)
+    dev_index: np.ndarray | None = field(default=None, repr=False, compare=False)
 
 
 def suggest_validation(df: pd.DataFrame, target: str) -> tuple[ValidationScheme, str | None, str]:
@@ -358,4 +360,6 @@ def auto_configure(df: pd.DataFrame, roles: Roles) -> AutoResult:
         config=config,
         n_dev=len(split.dev),
         n_test=len(split.test),
+        clean_all=clean_all,
+        dev_index=np.asarray(prep.index[split.dev]),
     )

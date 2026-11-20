@@ -60,6 +60,10 @@ The app first **holds out the test rows**. Every target-based recommendation use
   - a per-column table: type, missing values, unique values, skew, outliers and warnings;
   - a missing-values chart and the target distribution;
   - warnings about the split, number formats and small data.
+- **Explore data** (before any preprocessing):
+  - *One column*: pick any column (the target is listed first). You get stat cards (rows, missing, distinct values, mean, median, spread, skew, outliers or the most common value) and a chart of its distribution: a histogram with a box plot for numbers, the top categories for text, counts over time for dates.
+  - A second chart shows the column against the target: boxes per class, class shares per category, a scatter plot, or boxes of the target per category. This uses the **training rows only**, so the test set stays unseen.
+  - *Correlations*: a heatmap for the number columns, plus the most strongly related pairs explained in plain words.
 - **Leakage review:** columns almost perfectly related to the target. Answer *"Will this value be known when you make a prediction?"* for each one. Step 4 is blocked until every column is answered. In forecasting mode there is nothing to review, because every feature comes from the past.
 - **Preprocessing:**
   - *Automatic*: a decision and a reason for every column.

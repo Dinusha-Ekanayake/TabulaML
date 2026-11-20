@@ -79,7 +79,6 @@ def inject_css() -> None:
 
 def sidebar_stepper(state: AppState) -> None:
     with st.sidebar:
-        st.markdown("### TabulaML")
         st.caption("Interactive ML workbench")
         for number, label in STEPS:
             enabled = can_enter(state, number)

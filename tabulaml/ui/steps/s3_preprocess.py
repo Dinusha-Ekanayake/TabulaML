@@ -15,6 +15,7 @@ from tabulaml.training.splits import describe
 from tabulaml.ui.components import issues_view, nav_buttons
 from tabulaml.ui.helpers import OPTIONS, config_to_editor, editor_to_config
 from tabulaml.ui.state import AppState, get_state, reset_from, set_state
+from tabulaml.ui.steps.s3_explore import explore_tab
 from tabulaml.ui.steps.s3_missing import missing_values_section
 from tabulaml.ui.steps.s3_rows import row_settings, rows_card
 from tabulaml.workflow import Roles, auto_configure
@@ -344,9 +345,10 @@ def render(state: AppState) -> None:
     _run_settings(len(state.raw_df))
     state = _analyse(get_state())
     n_flagged = len([i for i in state.auto.leakage if i.column])
-    quality, leakage, preprocessing, preview = st.tabs(
+    quality, explore, leakage, preprocessing, preview = st.tabs(
         [
             "Data quality report",
+            "Explore data",
             f"Leakage review ({n_flagged})" if n_flagged else "Leakage review",
             "Preprocessing",
             "Pipeline preview",
@@ -354,6 +356,8 @@ def render(state: AppState) -> None:
     )
     with quality:
         _quality_tab(state)
+    with explore:
+        explore_tab(state)
     with leakage:
         answered = _leakage_tab(state)
     with preprocessing:

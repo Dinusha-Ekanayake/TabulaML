@@ -239,3 +239,12 @@ def test_rows_card_options_recreate_the_split():
     at = at.run(timeout=TIMEOUT)
     _no_errors(at)
     assert at.session_state["tml_state"].config.drop_duplicates is False
+
+
+def test_explore_data_tab_shows_distributions_and_relations():
+    at = _to_step3("classification", "Tea Auction")
+    at.selectbox(key="eda_column").set_value("price_mid_lkr")
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    labels = {m.label for m in at.metric}
+    assert {"Mean", "Median", "Skew"} <= labels

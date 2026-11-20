@@ -1,3 +1,5 @@
+<p align="center"><img src="tabulaml/ui/assets/logo_wordmark.svg" alt="TabulaML" width="340"></p>
+
 # TabulaML
 
 **An interactive machine learning workbench for tabular data, with generalized preprocessing, Random Forest vs boosting comparison, hybrid models and forecasting.**
@@ -15,6 +17,7 @@ TabulaML takes you from a raw table to a trained, compared and usable model in s
 | **Problem types** | Classification (binary / multi-class), regression, **forecasting (time series)**, and **several targets at once** (multi-label, multi-output) |
 | **Data** | CSV, TXT, Excel (sheet picker), JSON, Parquet. Delimiter and encoding detection. Number formats `1,234.5`, `1.234,5`, `1 234,5`, `1'234.5` |
 | **Validation** | Random, grouped (rows of one customer or sale stay together) or time-ordered. The test set is held out first; recommendations use training rows only |
+| **Explore** | Distribution of every column (histogram, box plot, top categories, counts over time), relationship with the target on training rows only, and a correlation heatmap |
 | **Preprocessing** | Automatic, schema-driven, with a reason for every decision; or Custom per-column type, imputation, encoding, scaling, transforms, outliers. Leakage review. Pipeline preview per model family |
 | **Models** | Linear baselines, Decision Tree, **Random Forest**, Extra Trees, Bagging, AdaBoost, Gradient Boosting, HistGB, **XGBoost, LightGBM, CatBoost**, SVM, KNN, ANN (MLP), Voting, Stacking |
 | **Hybrids** | **RF + ANN** (regression): a neural network learns the forest's residuals. **RF + ARIMA** (forecasting): ARIMA models the time pattern, a forest learns what ARIMA missed |

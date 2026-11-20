@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 import streamlit as st
 
@@ -39,7 +40,9 @@ except ImportError as exc:  # friendly message instead of a traceback on a broke
     st.stop()
 
 logging.basicConfig(level=logging.INFO)
-st.set_page_config(page_title="TabulaML", page_icon="\U0001f4ca", layout="wide")
+ASSETS = Path(__file__).resolve().parent / "tabulaml" / "ui" / "assets"
+st.set_page_config(page_title="TabulaML", page_icon=str(ASSETS / "logo.png"), layout="wide")
+st.logo(str(ASSETS / "logo_wordmark.svg"), icon_image=str(ASSETS / "logo.svg"), size="large")
 inject_css()
 
 PAGES = {

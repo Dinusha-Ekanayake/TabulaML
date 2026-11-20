@@ -9,7 +9,7 @@ description = "TabulaML: interactive ML workbench with generalized preprocessing
 requires-python = ">=3.11"
 
 [tool.setuptools.package-data]
-tabulaml = ["ui/*.css"]
+tabulaml = ["ui/*.css", "ui/assets/*"]
 
 [tool.setuptools.packages.find]
 include = ["tabulaml*"]

@@ -5,6 +5,8 @@ All notable changes to TabulaML. The format follows [Keep a Changelog](https://k
 ## [0.2.0] - 2026-11-20
 
 ### Added
+- **Explore data tab** (step 3): column distributions with stat cards, relationships with the target on the training rows only, and a correlation heatmap.
+- **Logo and brand:** an SVG icon and wordmark in the sidebar, the browser tab and the README; the editable source is in Figma.
 - **Rows and missing values card:** keep or drop exact duplicates, drop rows with missing values (listwise deletion) instead of imputing, and exclude columns above a missing-value limit.
 - **Grid search** next to random search. **Regularisation options:** L1 / L2 / elastic net for logistic regression, L1 + L2 + gamma for XGBoost, L1 + L2 for LightGBM, pruning for the decision tree.
 - **Random Forest dashboard**, readable leaderboard headers, and a responsive design system.

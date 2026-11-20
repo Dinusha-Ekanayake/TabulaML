@@ -114,14 +114,15 @@ class _Ctx:
 
 def _cv_loop(
     est: Any, ctx: _Ctx, tracker: _Tracker | None = None, name: str = ""
-) -> tuple[dict, np.ndarray, Any, np.ndarray, int]:
-    """Fold scores (display-oriented) plus out-of-fold predictions on the dev rows."""
+) -> tuple[dict, np.ndarray, Any, np.ndarray, int, str | None]:
+    """Fold scores (display-oriented), out-of-fold predictions on the dev rows, the number
+    of failed folds and the first failure message (shown to the user)."""
     n = len(ctx.X_dev)
     oof_pred = np.full(np.shape(ctx.y_dev), np.nan)
     oof_proba = np.full((n, ctx.n_classes), np.nan) if ctx.n_classes else None
     mask = np.zeros(n, dtype=bool)
     folds: list[dict[str, float]] = []
-    failed = 0
+    failed, first_error = 0, None
     cv = make_cv(ctx.config, ctx.y_dev)
     for fold, (tr, te) in enumerate(cv.split(ctx.X_dev, ctx.y_dev, ctx.groups_dev), start=1):
         if tracker:
@@ -130,6 +131,7 @@ def _cv_loop(
         try:
             model = clone(est).fit(ctx.X_dev.iloc[tr], ctx.y_dev[tr])
             pred = _predictions(model, ctx.X_dev.iloc[te], ctx.y_dev)
+            _check_finite(pred)
             proba = _full_proba(model, ctx.X_dev.iloc[te], ctx.n_classes) if ctx.n_classes else None
             folds.append(
                 compute_metrics(
@@ -147,12 +149,33 @@ def _cv_loop(
         except Exception as exc:  # noqa: BLE001 - a failing fold is recorded, not fatal
             logger.warning("CV fold failed: %s", _short_error(exc))
             failed += 1
+            first_error = first_error or _short_error(exc)
             folds.append({})
         if tracker:
             tracker.step(f"{name}: fold {fold}/{ctx.config.cv_folds} done")
     names = sorted({m for f in folds for m in f})
     scores = {m: tuple(float(f.get(m, np.nan)) for f in folds) for m in names}
-    return scores, oof_pred, oof_proba, mask, failed
+    return scores, oof_pred, oof_proba, mask, failed, first_error
+
+
+def _check_finite(pred: np.ndarray) -> None:
+    values = np.asarray(pred)
+    if values.dtype.kind == "f" and not np.isfinite(values).all():
+        raise ValueError(
+            "the model produced infinite or missing predictions. Try another target "
+            "transform, stronger regularisation or a different model."
+        )
+
+
+def _incomplete_reason(n_failed: int, fold_error: str | None, ctx: _Ctx) -> str:
+    """Plain explanation of why a model is 'incomplete' (shown in step 5)."""
+    folds = ctx.config.cv_folds
+    if n_failed:
+        return f"{n_failed} of {folds} cross-validation folds failed: {fold_error}"
+    return (
+        f"the {ctx.primary} score could not be computed in every fold (for example a fold "
+        "that contains only one class). Try fewer folds or another primary metric."
+    )
 
 
 def _predictions(model: Any, X: pd.DataFrame, y_like: np.ndarray) -> np.ndarray:
@@ -195,7 +218,7 @@ def _train_one(
                 positive=ctx.positive,
                 grid=grid,
             )
-        scores, oof_pred, oof_proba, mask, n_failed = _cv_loop(est, ctx, tracker, name)
+        scores, oof_pred, oof_proba, mask, n_failed, fold_error = _cv_loop(est, ctx, tracker, name)
         if tracker:
             tracker.check()
             tracker.report(f"{name}: final fit on all training rows + test")
@@ -204,6 +227,7 @@ def _train_one(
         fit_s = time.perf_counter() - start
         start = time.perf_counter()
         y_pred = _predictions(model, ctx.X_test, ctx.y_dev)
+        _check_finite(y_pred)
         y_proba = _full_proba(model, ctx.X_test, ctx.n_classes) if ctx.n_classes else None
         predict_s = time.perf_counter() - start
         metrics = compute_metrics(
@@ -225,7 +249,7 @@ def _train_one(
         logger.exception("Model %s failed", key)
         return _failed(key, _short_error(exc))
     status = _status(scores, n_failed, ctx.primary)
-    error = f"{n_failed} CV fold(s) failed or gave no {ctx.primary}." if status != "ok" else None
+    error = _incomplete_reason(n_failed, fold_error, ctx) if status != "ok" else None
     return ModelResult(
         key,
         name,

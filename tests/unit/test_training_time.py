@@ -127,3 +127,48 @@ def test_job_cancel_and_failure(regression_df):
 def test_row_cap_ignored_when_small(regression_df):
     prep = prepare(regression_df, replace(_cfg(), max_rows=10_000))
     assert len(prep.X) == len(regression_df)
+
+
+def test_incomplete_models_explain_the_failing_fold(regression_df, monkeypatch):
+    import tabulaml.training.trainer as trainer
+
+    real = trainer._predictions
+    calls = {"n": 0}
+
+    def flaky(model, X, y_like):
+        calls["n"] += 1
+        pred = real(model, X, y_like)
+        return pred * np.inf if calls["n"] == 2 else pred  # the second fold explodes
+
+    monkeypatch.setattr(trainer, "_predictions", flaky)
+    run = train_models(regression_df, _cfg(), ["ridge"])
+    r = run.result_for("ridge")
+    assert r.status == "incomplete"
+    assert "1 of 3 cross-validation folds failed" in r.error and "infinite" in r.error
+
+
+def test_log1p_back_transform_never_overflows():
+    from tabulaml.training.pipeline_factory import safe_expm1
+
+    out = safe_expm1([1e6, 2.0, -0.5])
+    assert np.isfinite(out).all() and out[1] == pytest.approx(np.expm1(2.0))
+
+
+def test_bounded_log1p_keeps_extrapolation_near_the_training_range():
+    from tabulaml.training.pipeline_factory import BoundedLog1p
+
+    t = BoundedLog1p().fit(np.array([[10.0], [100.0], [1000.0]]))
+    back = t.inverse_transform(t.transform(np.array([[50.0]])))
+    assert back[0, 0] == pytest.approx(50.0)
+    huge = t.inverse_transform(np.array([[200.0]]))  # a wild prediction on the log scale
+    assert huge[0, 0] <= 1001.0 * np.e  # expm1(log1p(max) + 1): about e times the largest value
+
+
+def test_metric_formatting_and_help():
+    from tabulaml.ui.helpers import METRIC_HELP, format_metric
+
+    assert format_metric(0.123456) == "0.1235"
+    assert format_metric(1563247535164052602.0) == "1.56e+18"
+    assert format_metric(12345.678) == "12,345.7"
+    assert format_metric(float("nan")) == "n/a"
+    assert "BELOW 0" in METRIC_HELP["r2"]

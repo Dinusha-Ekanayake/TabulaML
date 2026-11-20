@@ -148,3 +148,15 @@ def test_explore_charts_work_for_every_column_of_any_dataset(name, df, target, p
     numbers = [c.name for c in schema.columns if c.inferred_type.value == "numeric"]
     if len(numbers) >= 2:
         assert correlation_fig(clean[numbers]) is not None and strongest_pairs(clean[numbers])
+
+
+@pytest.mark.parametrize(("name", "df", "target", "ptype"), _cases(), ids=[c[0] for c in _cases()])
+def test_feature_relevance_works_on_any_dataset(name, df, target, ptype):
+    from tabulaml.evaluation.feature_relevance import feature_relevance
+
+    clean = clean_frame(df)
+    schema = profile_dataset(clean)
+    types = {c.name: c.inferred_type for c in schema.columns}
+    features = [c.name for c in schema.columns if c.name != target]
+    table = feature_relevance(clean, features, types, target, ptype)
+    assert len(table) == len(features) and (table["mutual_information"] >= 0).all(), name

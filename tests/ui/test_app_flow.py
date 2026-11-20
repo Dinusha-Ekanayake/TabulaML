@@ -248,3 +248,21 @@ def test_explore_data_tab_shows_distributions_and_relations():
     _no_errors(at)
     labels = {m.label for m in at.metric}
     assert {"Mean", "Median", "Skew"} <= labels
+
+
+def test_results_page_explains_when_no_model_is_validated(monkeypatch):
+    import tabulaml.training.trainer as trainer
+
+    def broken(model, X, y_like):
+        raise ValueError("fold exploded")
+
+    monkeypatch.setattr(trainer, "_predictions", broken)
+    at = _to_step3("regression", "dengue")
+    at = _click(at, "next_4")
+    at.toggle(key="m_ridge").set_value(True)
+    at = at.run(timeout=TIMEOUT)
+    at = _train(at)
+    _no_errors(at)
+    texts = " ".join(str(e.value) for e in at.error) + " ".join(str(m.value) for m in at.markdown)
+    assert "fold exploded" in texts or "fold exploded" in " ".join(str(w.value) for w in at.warning)
+    assert "No model was fully validated" in texts

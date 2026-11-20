@@ -17,6 +17,7 @@ import numpy as np
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.pipeline import Pipeline
 from imblearn.under_sampling import RandomUnderSampler
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import TransformedTargetRegressor
 from sklearn.multioutput import MultiOutputClassifier, MultiOutputRegressor
 from sklearn.preprocessing import PowerTransformer
@@ -132,12 +133,39 @@ def _check_target_transform(config: PreprocessingConfig, y: Any) -> None:
         )
 
 
+class BoundedLog1p(TransformerMixin, BaseEstimator):
+    """log1p target transform whose inverse stays near the training range.
+
+    A linear model can extrapolate to huge values on the log scale; ``expm1`` of those is
+    astronomically large (RMSE ~ 1e20). Predictions are clipped, ON THE LOG SCALE, to the
+    training range widened by ``margin`` (1.0 = up to e times beyond the largest target)."""
+
+    def __init__(self, margin: float = 1.0) -> None:
+        self.margin = margin
+
+    def fit(self, y: Any, *_: Any) -> BoundedLog1p:
+        z = np.log1p(np.asarray(y, dtype=float))
+        self.low_, self.high_ = np.nanmin(z) - self.margin, np.nanmax(z) + self.margin
+        return self
+
+    def transform(self, y: Any) -> np.ndarray:
+        return np.log1p(np.asarray(y, dtype=float))
+
+    def inverse_transform(self, z: Any) -> np.ndarray:
+        return np.expm1(np.clip(np.asarray(z, dtype=float), self.low_, self.high_))
+
+
+def safe_expm1(values: Any) -> np.ndarray:
+    """Kept for bundles saved by earlier versions (inverse_func of the old log1p wrapper)."""
+    return np.expm1(np.clip(np.asarray(values, dtype=float), None, 50.0))
+
+
 def _wrap_target(estimator: Any, config: PreprocessingConfig, as_base: bool) -> Any:
     if as_base or config.problem_type != ProblemType.REGRESSION:
         return estimator
     if config.target_transform == "log1p":
         return TransformedTargetRegressor(
-            regressor=estimator, func=np.log1p, inverse_func=np.expm1, check_inverse=False
+            regressor=estimator, transformer=BoundedLog1p(), check_inverse=False
         )
     if config.target_transform == "yeo_johnson":
         return TransformedTargetRegressor(regressor=estimator, transformer=PowerTransformer())

@@ -70,3 +70,20 @@ def test_correlations_and_strongest_pairs():
     a, b, r = strongest_pairs(df)[0]
     assert {a, b} == {"x", "x_twin"} and r > 0.99
     assert correlation_fig(df[["x"]]) is None and strongest_pairs(df[["x"]]) == []
+
+
+def test_feature_relevance_ranks_the_informative_feature_first():
+    from tabulaml.evaluation.feature_relevance import feature_relevance, relevance_fig
+
+    df = _frame()
+    types = {"x": NUM, "noise": NUM, "city": CAT, "when": DT}
+    reg = feature_relevance(
+        df, ["x", "noise", "city", "when"], types, "amount", ProblemType.REGRESSION
+    )
+    assert reg.iloc[0]["feature"] == "x" and reg.iloc[0]["correlation"] > 0.8
+    assert np.isnan(reg.set_index("feature").loc["city", "correlation"])  # numbers only
+    cls = feature_relevance(df, ["x", "noise"], types, "label", ProblemType.CLASSIFICATION)
+    assert cls.iloc[0]["feature"] == "x" and cls.iloc[0]["correlation"] > 0.5
+    assert relevance_fig(reg, "amount").data[0].type == "bar"
+    empty = feature_relevance(df.head(0), ["x"], types, "amount", ProblemType.REGRESSION)
+    assert empty.empty

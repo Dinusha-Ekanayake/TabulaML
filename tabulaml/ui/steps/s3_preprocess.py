@@ -16,6 +16,7 @@ from tabulaml.ui.components import issues_view, nav_buttons
 from tabulaml.ui.helpers import OPTIONS, config_to_editor, editor_to_config
 from tabulaml.ui.state import AppState, get_state, reset_from, set_state
 from tabulaml.ui.steps.s3_explore import explore_tab
+from tabulaml.ui.steps.s3_features import features_card
 from tabulaml.ui.steps.s3_missing import missing_values_section
 from tabulaml.ui.steps.s3_rows import row_settings, rows_card
 from tabulaml.workflow import Roles, auto_configure
@@ -207,6 +208,7 @@ def _preprocessing_tab(state: AppState) -> None:
             + ", ".join(f"`{c}`" for c in state.card.recommended_exclusions)
         )
     st.markdown("\n".join(f"- {line}" for line in state.config.explanations))
+    features_card(get_state())
     if mode == "Automatic":
         st.dataframe(config_to_editor(state.config), hide_index=True, width="stretch")
         st.caption(

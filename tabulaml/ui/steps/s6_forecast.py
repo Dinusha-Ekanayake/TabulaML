@@ -35,6 +35,14 @@ def _history(state: AppState):  # noqa: ANN202 - DataFrame or None
         return None
 
 
+def _readable_dates(table, column: str):  # noqa: ANN001, ANN202 - DataFrame in and out
+    """Show plain dates when every time is midnight (weekly / daily / monthly data)."""
+    values = table[column]
+    if hasattr(values, "dt") and (values.dt.normalize() == values).all():
+        return table.assign(**{column: values.dt.date})
+    return table
+
+
 def forecast_tab(state: AppState, run: TrainingRun, result: ModelResult) -> None:
     fc = run.config.forecast
     st.caption(
@@ -56,7 +64,7 @@ def forecast_tab(state: AppState, run: TrainingRun, result: ModelResult) -> None
     except ValueError as exc:
         st.error(f"Could not forecast: {exc}")
         return
-    st.dataframe(table, hide_index=True, width="stretch")
+    st.dataframe(_readable_dates(table, run.config.order_column), hide_index=True, width="stretch")
     if not fc.series_column:
         shown = history.assign(
             **{run.config.order_column: order_key(history[run.config.order_column])}

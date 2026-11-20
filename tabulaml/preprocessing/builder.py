@@ -71,17 +71,21 @@ def _numeric_imputer(cfg: ColumnConfig, indicator: bool) -> Step:
 
 
 def _numeric_steps(cfg: ColumnConfig, conf: PreprocessingConfig, scaled: bool) -> list[Step]:
+    """impute -> clip outliers -> skew transform -> scale (the standard order).
+
+    Outliers are clipped BEFORE the Yeo-Johnson transform, because extreme values distort
+    the transform's estimated shape; scaling comes last so it sees the final values."""
     steps: list[Step] = [("to_numeric", ToNumeric), _numeric_imputer(cfg, conf.missing_indicator)]
-    transform = _resolve(cfg.transform, "yeo_johnson_auto" if scaled else "none")
-    if transform == "yeo_johnson_auto":
-        steps.append(("yeo_johnson:if_skewed", lambda: SkewCorrector(threshold=SKEW_THRESHOLD)))
-    elif transform == "yeo_johnson":
-        steps.append(("yeo_johnson", lambda: SkewCorrector(threshold=0.0)))
     outliers = _resolve(cfg.outliers, "clip_extreme" if scaled else "none")
     if outliers == "clip_extreme":
         steps.append(("clip:3xIQR", lambda: OutlierClipper(factor=AUTO_CLIP_FACTOR)))
     elif outliers == "iqr_clip":
         steps.append(("clip:1.5xIQR", lambda: OutlierClipper(factor=1.5)))
+    transform = _resolve(cfg.transform, "yeo_johnson_auto" if scaled else "none")
+    if transform == "yeo_johnson_auto":
+        steps.append(("yeo_johnson:if_skewed", lambda: SkewCorrector(threshold=SKEW_THRESHOLD)))
+    elif transform == "yeo_johnson":
+        steps.append(("yeo_johnson", lambda: SkewCorrector(threshold=0.0)))
     scaler = _scaler_step(_resolve(cfg.scaling, "standard" if scaled else "none"))
     return steps + ([scaler] if scaler else [])
 

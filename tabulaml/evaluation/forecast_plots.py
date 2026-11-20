@@ -45,10 +45,14 @@ def future_fig(
 ) -> go.Figure:
     """Recent history followed by the forecast for the next periods (one series)."""
     recent = history.sort_values(time_col).tail(HISTORY_POINTS)
+    last = recent.dropna(subset=[target]).tail(1)
+    # the forecast line starts at the last known value, so it reads as a continuation
+    x = pd.concat([last[time_col], forecast[time_col]], ignore_index=True)
+    y = pd.concat([last[target], forecast["forecast"]], ignore_index=True)
     fig = go.Figure(
         [
             _line(recent[time_col], recent[target], "History", REFERENCE),
-            _line(forecast[time_col], forecast["forecast"], "Forecast", PRIMARY, "dash"),
+            _line(x, y, "Forecast", PRIMARY, "dash"),
         ]
     )
     return _layout(fig, "History and forecast", "Time", target)

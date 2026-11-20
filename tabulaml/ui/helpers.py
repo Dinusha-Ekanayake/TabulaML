@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, replace
 from enum import Enum
 from typing import Any
@@ -74,6 +75,32 @@ def editor_to_config(config: PreprocessingConfig, edited: pd.DataFrame) -> Prepr
 
 def metric_label(metric: str) -> str:
     return METRIC_LABELS.get(metric, metric)
+
+
+METRIC_HELP = {
+    "r2": "Share of the target's variation the model explains: 1 is perfect, 0 is no better "
+    "than always predicting the average, and BELOW 0 means worse than the average.",
+    "rmse": "Typical size of an error, in the target's units; large errors count extra. "
+    "Lower is better.",
+    "mae": "Average absolute error, in the target's units. Lower is better.",
+    "mape": "Average error as a percentage of the true value. Lower is better.",
+    "accuracy": "Share of rows predicted correctly.",
+    "f1": "Balance of precision and recall for the positive class (0 to 1).",
+    "f1_macro": "F1 averaged over classes, so small classes count as much as big ones.",
+    "roc_auc": "How well the model ranks positives above negatives: 0.5 is guessing, 1 is perfect.",
+    "subset_accuracy": "Share of rows where every target is right.",
+}
+
+
+def format_metric(value: float) -> str:
+    """Readable metric values: 4 decimals normally, compact notation for huge numbers."""
+    if value is None or not math.isfinite(value):
+        return "n/a"
+    if abs(value) >= 1e6:
+        return f"{value:.3g}"
+    if abs(value) >= 1000:
+        return f"{value:,.1f}"
+    return f"{value:.4f}"
 
 
 _FIXED_HEADERS = {

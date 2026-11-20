@@ -124,3 +124,32 @@ def test_no_features_raises(regression_df):
 def test_feature_names_available(messy_df, profile):
     ct, train, _ = _fit_and_score_shapes(messy_df, "target", CLS, profile)
     assert len(ct.get_feature_names_out()) == train.shape[1]
+
+
+def test_preprocessing_steps_follow_the_standard_order():
+    """Numbers: parse -> impute -> clip -> transform -> scale. Categories: impute -> encode.
+    Every step lives inside the model pipeline, so it is refitted on each training fold."""
+    from tabulaml.core.types import (
+        ColumnConfig,
+        FeatureType,
+        ModelProfile,
+        PreprocessingConfig,
+        ProblemType,
+    )
+    from tabulaml.preprocessing.builder import column_steps
+
+    cfg = PreprocessingConfig(
+        ProblemType.REGRESSION,
+        "y",
+        "custom",
+        (
+            ColumnConfig("n", FeatureType.NUMERIC, outliers="iqr_clip", transform="yeo_johnson"),
+            ColumnConfig("c", FeatureType.CATEGORICAL),
+        ),
+    )
+    num = [label for label, _ in column_steps(cfg.columns[0], cfg, ModelProfile.SCALE_SENSITIVE)]
+    order = ["to_numeric", "impute", "clip", "yeo_johnson", "scale"]
+    positions = [next(i for i, step in enumerate(num) if step.startswith(k)) for k in order]
+    assert positions == sorted(positions), num
+    cat = [label for label, _ in column_steps(cfg.columns[1], cfg, ModelProfile.TREE)]
+    assert cat[0] == "to_category" and cat[1].startswith("impute") and "ordinal" in cat[2]

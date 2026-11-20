@@ -19,7 +19,14 @@ from tabulaml.evaluation.importance import permutation_importance_df
 from tabulaml.evaluation.metrics import best_threshold, threshold_curve
 from tabulaml.models.params import param_specs
 from tabulaml.ui.components import nav_buttons
-from tabulaml.ui.helpers import display_board, metric_label, rf_vs_boosting, run_report
+from tabulaml.ui.helpers import (
+    METRIC_HELP,
+    display_board,
+    format_metric,
+    metric_label,
+    rf_vs_boosting,
+    run_report,
+)
 from tabulaml.ui.state import AppState, get_state, set_state
 from tabulaml.ui.steps.s5_forecast import forecast_test_view
 from tabulaml.ui.steps.s5_rf import has_rf, rf_dashboard
@@ -49,8 +56,18 @@ def _cv_tiles(run: TrainingRun) -> None:
         scores = np.asarray(best.cv_scores[metric], dtype=float)
         col.metric(
             f"CV {metric_label(metric)}",
-            f"{np.nanmean(scores):.4f}",
-            help=f"Mean over folds; spread (std) {np.nanstd(scores):.4f}.",
+            format_metric(float(np.nanmean(scores))),
+            help=f"{METRIC_HELP.get(metric, '')} Mean over the folds; spread (std) "
+            f"{format_metric(float(np.nanstd(scores)))}.",
+        )
+    r2 = best.cv_scores.get("r2")
+    if r2 is not None and np.nanmean(np.asarray(r2, dtype=float)) < 0:
+        st.warning(
+            "Even the best model has a cross-validated R² below 0: it predicts worse than "
+            "simply using the average. The features may carry little signal for this target, "
+            "or the settings do not suit the data. Try tree models (Random Forest, LightGBM), "
+            "the target transform *none*, or check the Explore data tab.",
+            icon=":material/trending_down:",
         )
 
 
@@ -211,7 +228,11 @@ def _final_test(state: AppState, name: str) -> None:
     best = run.best()
     shown = [m for m in TILE_METRICS[run.problem_type] if m in best.test_metrics][:4]
     for col, metric in zip(st.columns(len(shown) or 1), shown, strict=False):
-        col.metric(f"Test {metric_label(metric)} ({best.name})", f"{best.test_metrics[metric]:.4f}")
+        col.metric(
+            f"Test {metric_label(metric)} ({best.name})",
+            format_metric(best.test_metrics[metric]),
+            help=METRIC_HELP.get(metric),
+        )
     board = run.leaderboard()
     metric = run.primary_metric
     if f"test_{metric}" in board:
@@ -254,6 +275,24 @@ def _test_importance(state: AppState, result: ModelResult) -> None:
     )
 
 
+def _nothing_validated() -> None:
+    """No model passed every fold: explain what to try instead of a dead end."""
+    with st.container(border=True, key="no_model_card"):
+        st.markdown("##### No model was fully validated")
+        st.write(
+            "Every selected model failed in at least one cross-validation fold, so none can "
+            "be trusted as the best model yet. The reason for each model is shown above."
+        )
+        st.markdown(
+            "- Add a robust model such as **Random Forest** or **LightGBM** next to the "
+            "linear ones.\n"
+            "- In step 3, lower the number of **folds** (Evaluation settings) or set the "
+            "regression **target transform** to *none*.\n"
+            "- Check the data quality report for columns with mostly missing or unusual values."
+        )
+    nav_buttons(back=4, next_step=None)
+
+
 def _keep_tab() -> None:
     """Tab selection is tracked in session state, so re-runs keep the open tab."""
 
@@ -269,10 +308,14 @@ def render(state: AppState) -> None:
         )
     for r in run.results:
         if r.status == "failed":
-            st.error(f"{r.name} failed: {r.error}")
+            st.error(f"**{r.name}** could not be trained: {r.error}", icon=":material/error:")
+        elif r.status == "incomplete":
+            st.warning(
+                f"**{r.name}** is incomplete and is not used as the best model: {r.error}",
+                icon=":material/warning:",
+            )
     if not any(r.status == "ok" for r in run.results):
-        st.error("No model was fully validated. Check the messages above and go back.")
-        nav_buttons(back=4, next_step=None)
+        _nothing_validated()
         return
     name = state.card.title if state.card else (state.filename or "uploaded data")
     _cv_tiles(run)

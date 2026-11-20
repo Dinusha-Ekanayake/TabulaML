@@ -121,3 +121,30 @@ def test_real_multi_output_dataset_through_the_workflow():
     run = train_models(df, auto.config, ["ridge", "rf"])
     assert {r.status for r in run.results} == {"ok"}
     assert set(run.best().per_target) == {"Weight", "Waist", "Pulse"}
+
+
+@pytest.mark.parametrize(("name", "df", "target", "ptype"), _cases(), ids=[c[0] for c in _cases()])
+def test_explore_charts_work_for_every_column_of_any_dataset(name, df, target, ptype):
+    """Every Explore-data chart is chosen from the detected column type, never from names."""
+    from tabulaml.evaluation.eda_plots import (
+        column_summary,
+        correlation_fig,
+        distribution_fig,
+        strongest_pairs,
+        target_relation_fig,
+    )
+
+    clean = clean_frame(df)
+    schema = profile_dataset(clean)
+    for col in schema.columns:
+        series = clean[col.name]
+        assert column_summary(series, col.inferred_type)["rows"] == len(df), (name, col.name)
+        assert distribution_fig(series, col.inferred_type, col.name).data, (name, col.name)
+        if col.name != target:
+            fig = target_relation_fig(
+                series, clean[target], col.inferred_type, ptype, col.name, target
+            )
+            assert fig.data, (name, col.name)
+    numbers = [c.name for c in schema.columns if c.inferred_type.value == "numeric"]
+    if len(numbers) >= 2:
+        assert correlation_fig(clean[numbers]) is not None and strongest_pairs(clean[numbers])

@@ -164,7 +164,7 @@ The naive forecast is hard to beat for weekly dengue counts, because next week i
 - Possible next steps: SHAP explanations and an HTML report export.
 
 ## 11. Reproducibility
-`pip install -r requirements-dev.txt && pip install -e .`, then `pytest` (234 tests, about 95 % coverage; includes headless runs of the whole app), then `python scripts/benchmark.py`. The public data can be rebuilt with `python scripts/fetch_public_datasets.py public`. Versions are pinned in `requirements.txt` and recorded in every run report. Deployment instructions are in `docs/DEPLOYMENT.md`.
+`pip install -r requirements-dev.txt && pip install -e .`, then `pytest` (312 tests, about 96 % coverage; includes headless runs of the whole app) and `python scripts/e2e_playwright.py` (a browser walk-through of every problem type on desktop and phone), then `python scripts/benchmark.py`. The public data can be rebuilt with `python scripts/fetch_public_datasets.py public`. Versions are pinned in `requirements.txt` and recorded in every run report. Deployment instructions are in `docs/DEPLOYMENT.md`; the deployed app is at https://tabulaml.streamlit.app.
 
 ## 12. AI-assistance disclosure
 Parts of the design, code, tests and documentation were produced with the help of an AI coding assistant, under the author's direction, and reviewed. *Edit this section to match your course's disclosure requirements.*

@@ -47,6 +47,9 @@
 | E2 | Several targets | done | MultiOutput wrappers; averaged + exact-match + Hamming metrics; per-target tables and predictions |
 | E3 | Forecasting | done | past-only lag/rolling/calendar features; naive + seasonal naive; RF + ARIMA hybrid; future forecasts |
 | E4 | Input add-ons | done | JSON / Parquet; apostrophe thousands; small-data warnings |
+| E6 | Grid search, regularisation options, real defaults | done | grid of values centred on defaults (max 200); L1/L2/elastic net logreg; XGB/LGBM L1+L2; DT pruning |
+| E7 | Row options, Explore data, logo | done | duplicates / incomplete rows / column missing limit; distributions, target relations (training rows), correlations; SVG logo + Figma brand file |
+| E8 | Deployment | done | live at https://tabulaml.streamlit.app; package __init__ starts app.py when used as main file; footer layout fixed |
 | E5 | RF dashboard, card design, responsive, end-to-end checks | done | head-to-head fold counts; built-in importance; mobile layout; Playwright walk-through |
 
 ## Open decisions / blockers

@@ -308,6 +308,14 @@ class TrainingCancelled(Exception)                                              
 # models/spec.py, models/composite_specs.py   ModelSpec and the ensemble / hybrid / forecasting specs
 #                              (registry.py re-exports ModelSpec; MODEL_REGISTRY includes them all)
 # evaluation/rf_insights.py    head_to_head, verdict, forest_summary, impurity_importance (RF dashboard)
+# evaluation/eda_plots.py      column_summary, distribution_fig, target_relation_fig, correlation_fig, strongest_pairs
+PreprocessingConfig += grids: dict[str, dict[str, tuple]]   # grid search per model (random search: tuning)
+                       drop_duplicates: bool = True; missing_rows: str = "impute"   # impute | drop
+# training/tuning.py           tune(..., n_iter=0, grid=None)  random search or grid search (max 200 combinations)
+# models/params.py             ParamSpec.tunable; grid_values(spec, n, center); grid_size; model_defaults(key, problem_type)
+# training/pipeline_factory.py forecast_model_unavailable(key, config) -> str | None
+# training/prepare.py          incomplete_rows(df, config); row options judged on whole rows (split never depends on columns)
+# workflow.py                  AutoResult += clean_all, dev_index (for the Explore data tab)
 ```
 
 Model keys (used everywhere): `logreg, ridge, lasso, elasticnet, linreg, dt, rf, extratrees, bagging, adaboost, gb, histgb, xgb, lgbm, catboost, svm, knn, mlp, voting, stacking, hybrid_rf_ann`, plus forecasting-only `naive, seasonal_naive, rf_arima`.

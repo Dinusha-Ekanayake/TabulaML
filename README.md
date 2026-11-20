@@ -6,6 +6,8 @@
 
 TabulaML takes you from a raw table to a trained, compared and usable model in six guided steps. It follows the workflow used in professional practice: define the problem, check the data, hold out a test set **before** any decision, keep every preprocessing step inside the model pipeline, compare models with cross-validation, test once, then predict or export.
 
+**Live app:** https://tabulaml.streamlit.app
+
 ![workflow](https://img.shields.io/badge/workflow-6%20steps-2a78d6) ![python](https://img.shields.io/badge/python-3.12-2a78d6) ![tests](https://img.shields.io/badge/tests-pytest%20%2B%20AppTest-1baf7a) ![data](https://img.shields.io/badge/data-public%20Sri%20Lankan-eb6834)
 
 ---
@@ -42,6 +44,18 @@ TabulaML takes you from a raw table to a trained, compared and usable model in s
 
 Full walkthrough: **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.
 
+## Requirements
+| Item | Requirement |
+|---|---|
+| Python | 3.11 or 3.12 (tested on 3.12.2) |
+| Operating system | Windows 10/11, macOS 12+ or Linux (x86-64 or ARM64). On Linux, LightGBM needs the OpenMP runtime: `sudo apt install libgomp1` |
+| Memory | 4 GB RAM minimum, 8 GB recommended for datasets near the 1-million-cell limit or for stacking |
+| Disk | About 1.5 GB for the virtual environment (CatBoost, XGBoost, LightGBM and statsmodels wheels) |
+| Browser | A current Chrome, Edge, Firefox or Safari; works on phones and tablets |
+| Python packages | Pinned in `requirements.txt` (runtime) and `requirements-dev.txt` (tests, linting, Playwright). Key versions: scikit-learn 1.5.2 (kept below 1.6 on purpose), pandas 2.3.3, numpy 2.2.6, XGBoost 3.4.1, LightGBM 4.7.0, CatBoost 1.2.10, statsmodels 0.15.0, Streamlit 1.67.0 |
+
+No GPU, database or internet connection is needed to run locally; the bundled sample datasets are included in the repository.
+
 ## Quick start (Windows, Python 3.12)
 ```bash
 git clone https://github.com/Dinusha-Ekanayake/TabulaML.git
@@ -67,8 +81,10 @@ Only **publicly available, genuine Sri Lankan datasets** are bundled. There is n
 Every sample has a dataset card: provenance, licence, period, feature dictionary, target definition and limitations. Rebuild the bundled files with `python scripts/fetch_public_datasets.py public`. To fetch the telco data, set `KAGGLE_USERNAME` and `KAGGLE_KEY`, then run `python scripts/fetch_public_datasets.py telco`.
 
 ## Deploy on Streamlit Community Cloud
+The app is deployed at **https://tabulaml.streamlit.app** from the `main` branch of this repository; every push to `main` redeploys it.
+
 1. Push `main` to GitHub.
-2. At **share.streamlit.io**, choose **Create app** and pick this repository, branch `main`, file `app.py`.
+2. At **share.streamlit.io**, choose **Create app** and pick this repository, branch `main`, main file **`app.py`**.
 3. Under **Advanced settings**, choose Python 3.12 and add the secret `TABULAML_CLOUD = "1"`. This lowers the memory-heavy limits.
 4. Click **Deploy**.
 
@@ -76,8 +92,9 @@ Details and troubleshooting: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
 ## Quality
 ```bash
-pytest -q --cov=tabulaml          # unit, integration and headless UI tests (coverage gate 80 %)
+pytest -q --cov=tabulaml          # 312 unit, integration and headless UI tests (about 96 % coverage)
 ruff check . && ruff format --check .
+python scripts/e2e_playwright.py  # browser walk-through of every problem type (app must be running)
 python scripts/benchmark.py --quick
 ```
 The tests include:

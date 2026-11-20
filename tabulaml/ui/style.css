@@ -19,10 +19,11 @@
   --tml-fs-card: 1.05rem;
   --tml-fs-caption: .875rem;
   --tml-fs-tag: .75rem;
+  --tml-footer-h: 2.5rem;  /* the scroll areas end exactly where the fixed footer starts */
 }
 
 /* ---------- page and type scale ---------- */
-.block-container { padding: 2rem 2rem 5rem !important; max-width: 1200px; }
+.block-container { padding: 2rem 2rem 2.5rem !important; max-width: 1200px; }
 .block-container p, .block-container li { line-height: 1.55; }
 .block-container h1 { font-size: var(--tml-fs-title) !important; font-weight: 700; }
 .block-container h2 { font-size: var(--tml-fs-title) !important; font-weight: 700;
@@ -111,14 +112,21 @@ button[data-baseweb="tab"] p { font-size: .95rem; }
   font-size: var(--tml-fs-tag); color: #fff; background: var(--tml-accent);
 }
 
-/* ---------- footer: fixed to the bottom edge, theme-agnostic glass bar ---------- */
-section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-bottom: 3.5rem; }
+/* ---------- footer: fixed to the bottom edge ----------
+   The main panel and the sidebar scroll inside their own areas; both end at the top of the
+   footer, so no scrollbar or content ever runs underneath it. */
+[data-testid="stMain"], section[data-testid="stSidebar"] {
+  height: calc(100dvh - var(--tml-footer-h)) !important;
+  max-height: calc(100dvh - var(--tml-footer-h)) !important;
+}
+[data-testid="stSidebarContent"] { padding-bottom: 1rem; }
 .tml-footer {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000001;
-  display: flex; align-items: center; justify-content: space-between; gap: .4rem 1.5rem;
-  flex-wrap: wrap; padding: .5rem 1.5rem; font-size: .78rem; line-height: 1.4;
-  color: inherit; background: rgba(128, 128, 128, 0.10);
-  -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px);
+  height: var(--tml-footer-h); box-sizing: border-box; overflow: hidden;
+  display: flex; align-items: center; justify-content: space-between; gap: .25rem 1.5rem;
+  flex-wrap: wrap; padding: 0 1.5rem; font-size: .78rem; line-height: 1.35;
+  color: inherit;
+  background: rgba(128, 128, 128, 0.10);  /* over the plain page background: both themes */
   border-top: 1px solid rgba(128, 128, 128, 0.25);
 }
 .tml-footer .tml-f-left { font-weight: 600; white-space: nowrap; }
@@ -141,8 +149,10 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-bott
 /* ---------- phones ---------- */
 @media (max-width: 720px) {
   :root { --tml-fs-title: 1.6rem; --tml-fs-section: 1.2rem; --tml-fs-group: 1.05rem; }
-  .block-container { padding: 3.75rem .75rem 8.5rem !important; }
-  .tml-footer { justify-content: center; text-align: center; padding: .45rem .75rem; }
+  :root { --tml-footer-h: 5.25rem; }
+  .block-container { padding: 3.75rem .75rem 2rem !important; }
+  .tml-footer { justify-content: center; align-content: center; text-align: center;
+    padding: .35rem .75rem; }
   .tml-footer-cloud { padding-right: 4.5rem; }
   .tml-footer .tml-f-mid { flex-basis: 100%; white-space: normal; }
   .tml-footer .tml-f-left, .tml-footer .tml-f-right { white-space: normal; }

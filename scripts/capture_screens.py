@@ -18,12 +18,21 @@ import e2e_playwright as e  # noqa: E402 - shared helpers for driving the app
 WIDTH, HEIGHT = 1440, 900
 
 
-def shot(page: Page, out: Path, name: str) -> None:
+TOP = "() => document.querySelector('[data-testid=stMain]')?.scrollTo(0, 0)"
+
+
+def shot(page: Page, out: Path, name: str, top: bool = True) -> None:
+    """Screenshot the viewport; by default from the top of the step (the page keeps its
+    scroll position after navigation)."""
+    if top:
+        page.evaluate(TOP)
+        time.sleep(0.4)
     page.screenshot(path=str(out / f"{name}.jpg"), type="jpeg", quality=88)
 
 
 def show(page: Page, text: str) -> None:
-    page.locator(f"text={text} >> visible=true").first.scroll_into_view_if_needed()
+    target = page.locator(f"text={text} >> visible=true").first
+    target.evaluate("el => el.scrollIntoView({block: 'start'})")  # section at the top
     time.sleep(0.6)
 
 
@@ -37,7 +46,7 @@ def tabular_tour(page: Page, out: Path) -> None:
     e.load_sample(page, "classification", "Tea Auction")
     shot(page, out, "02_data")
     show(page, "How should the model be tested?")
-    shot(page, out, "03_validation")
+    shot(page, out, "03_validation", top=False)
     e.go_next(page, "3. Data quality and preprocessing")
     shot(page, out, "04_quality")
     tab(page, "Explore data")
@@ -49,7 +58,7 @@ def tabular_tour(page: Page, out: Path) -> None:
     page.get_by_text("Custom", exact=True).first.click()
     e.settle(page)
     show(page, "Rows and missing values")
-    shot(page, out, "07_rows_missing")
+    shot(page, out, "07_rows_missing", top=False)
     tab(page, "Pipeline preview")
     shot(page, out, "08_pipeline")
     e.go_next(page, "4. Choose models")
@@ -63,11 +72,11 @@ def tabular_tour(page: Page, out: Path) -> None:
     page.locator("label >> text=Grid search >> visible=true").first.click()
     e.settle(page)
     show(page, "Settings to search")
-    shot(page, out, "10_grid_search")
+    shot(page, out, "10_grid_search", top=False)
     page.locator("label >> text=Default >> visible=true").first.click()
     e.settle(page)
     show(page, "Estimated training time")
-    shot(page, out, "11_estimate")
+    shot(page, out, "11_estimate", top=False)
     e.click(page, "Train & Predict")
     time.sleep(2)
     shot(page, out, "12_training")
@@ -92,7 +101,7 @@ def tabular_tour(page: Page, out: Path) -> None:
 def forecasting_tour(page: Page, out: Path) -> None:
     e.load_sample(page, "forecasting", None)
     show(page, "Forecast settings")
-    shot(page, out, "18_forecast_settings")
+    shot(page, out, "18_forecast_settings", top=False)
     e.go_next(page, "3. Data quality and preprocessing")
     e.go_next(page, "4. Choose models")
     for key in ("naive", "rf", "rf_arima"):
@@ -103,13 +112,13 @@ def forecasting_tour(page: Page, out: Path) -> None:
     tab(page, "Final test")
     e.click(page, "Reveal final test results")
     tab(page, "Final test")
-    show(page, "/naive baseline/i")
-    shot(page, out, "19_forecast_test")
+    show(page, "/Held-out test period/")
+    shot(page, out, "19_forecast_test", top=False)
     e.click(page, "Use a model")
     page.get_by_role("heading", name="6. Use a model").wait_for(timeout=e.STEP_TIMEOUT_MS)
     e.click(page, "Forecast the next")
     show(page, "History and forecast")
-    shot(page, out, "20_forecast_future")
+    shot(page, out, "20_forecast_future", top=False)
 
 
 def main() -> None:

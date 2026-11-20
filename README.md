@@ -122,7 +122,7 @@ tabulaml/evaluation         metrics (incl. multi-output), importance, RF insight
 tabulaml/inference          predictor and model bundles
 tabulaml/workflow.py        holdout-first automatic configuration
 tabulaml/ui                 Streamlit steps and cards (no ML logic)
-scripts/                    dataset fetcher, benchmark, deployment smoke test
+scripts/                    dataset fetcher, benchmarks, browser checks, screenshots, PDF guide builder
 docs/                       user guide, architecture, plans, report, deployment
 ```
 
@@ -142,6 +142,7 @@ docs/                       user guide, architecture, plans, report, deployment
 - **Model bundles** are pickle files. Only load bundles you created yourself.
 
 ## Documentation
+- [Application overview and user guide (PDF)](docs/TabulaML_Guide.pdf): features, requirements, a step-by-step guide with screenshots, methodology and troubleshooting.
 - [User guide](docs/USER_GUIDE.md): every screen and option.
 - [Deployment](docs/DEPLOYMENT.md): Streamlit Community Cloud.
 - [Architecture](docs/02_ARCHITECTURE.md): design, contracts and leakage-safe flow.

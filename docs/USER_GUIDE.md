@@ -78,10 +78,16 @@ The app first **holds out the test rows**. Every target-based recommendation use
   - Forecasting adds **Naive**, **Seasonal naive** and **Hybrid RF + ARIMA**.
   - Regression includes **Hybrid RF + ANN**.
 - **Voting / Stacking:** choose at least two base models.
-- **Model settings:** Default, Manual (every setting explained) or Auto-tune (a random search with the same CV, on training rows only). Presets: Fast, Balanced, Thorough.
+- **Model settings** (one card per model):
+  - *Default*: the model's standard settings.
+  - *Manual*: the form starts from the real defaults and explains every setting. Regularisation options include L1 / L2 / elastic net for logistic regression, `reg_alpha`, `reg_lambda` and `gamma` for XGBoost and LightGBM, `l2_leaf_reg` for CatBoost, and cost-complexity pruning for the decision tree.
+  - *Random search*: N random combinations.
+  - *Grid search*: every combination of a few values per chosen setting, centred on the defaults. The card shows how many combinations and model fits that means (limit 200 combinations).
+  - Both searches use the same cross-validation on the training rows only.
+  - Presets: Fast, Balanced, Thorough.
 - **Estimated training time:**
   - The estimate is a range with a speed level (quick, moderate or long).
-  - It warns about slow choices: stacking, auto-tuning, SVM on large data, KNN imputation, cloud mode.
+  - It warns about slow choices: stacking, hyperparameter search, SVM on large data, KNN imputation, cloud mode.
   - It names the slowest model and suggests ways to speed up.
 - **Train & Predict:**
   - Training runs in the background. A progress card shows the model and fold, the elapsed time and the approximate time remaining.
@@ -120,6 +126,6 @@ Only fully validated models are listed. A threshold chosen in step 5 is applied.
 - **Download model:** **Prepare model files**, then **.joblib** (compressed) or **.pkl** (standard pickle). Load either with `load_bundle(path)`. Only load files you created yourself.
 
 ## Tips
-- Start with the **Recommended set**. Add stacking or auto-tuning only when you need the last bit of accuracy.
+- Start with the **Recommended set**. Add stacking or a hyperparameter search only when you need the last bit of accuracy.
 - On a slow machine or on Streamlit Cloud, use the row cap and fewer folds.
 - In forecasting, always compare with the **naive** baseline. A model that cannot beat "same as last week" has learned nothing useful.

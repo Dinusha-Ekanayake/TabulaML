@@ -178,9 +178,11 @@ def _train_one(
     try:
         est = build_model_pipeline(key, config, y=ctx.y_dev, base_keys=bases)
         history = None
-        if config.tuning.get(key):
+        grid = config.grids.get(key)
+        if grid or config.tuning.get(key):
             if tracker:
-                tracker.report(f"{name}: auto-tuning ({config.tuning[key]} combinations)")
+                how = "grid search" if grid else f"random search ({config.tuning[key]} tries)"
+                tracker.report(f"{name}: tuning by {how}")
             est, history = tune(
                 est,
                 key,
@@ -189,8 +191,9 @@ def _train_one(
                 ctx.groups_dev,
                 config,
                 ctx.primary,
-                n_iter=config.tuning[key],
+                n_iter=config.tuning.get(key, 0),
                 positive=ctx.positive,
+                grid=grid,
             )
         scores, oof_pred, oof_proba, mask, n_failed = _cv_loop(est, ctx, tracker, name)
         if tracker:

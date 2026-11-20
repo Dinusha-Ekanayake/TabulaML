@@ -52,7 +52,13 @@ def test_estimate_warns_about_slow_choices():
     )
     text = " ".join(est.warnings)
     assert est.level == "long"
-    for word in ("Stacking", "Auto-tuning", "SVM will be skipped", "KNN imputation", "Slowest"):
+    for word in (
+        "Stacking",
+        "Hyperparameter search",
+        "SVM will be skipped",
+        "KNN imputation",
+        "Slowest",
+    ):
         assert word in text
     assert est.per_model["stacking"] > est.per_model["rf"] / 21
 

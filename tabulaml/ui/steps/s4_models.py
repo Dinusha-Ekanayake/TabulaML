@@ -9,6 +9,7 @@ import streamlit as st
 
 from tabulaml.core.types import ModelProfile
 from tabulaml.evaluation.metrics import default_primary_metric, scoring_map
+from tabulaml.models.params import grid_size
 from tabulaml.models.registry import (
     ENSEMBLE_KEYS,
     FORECAST_KEYS,
@@ -172,17 +173,21 @@ def render(state: AppState) -> None:
     _selection_bar(state)
     selected = _model_cards(state)
     bases = _ensemble_bases(state, selected)
-    manual, tuning = settings_panel(selected)
+    manual, tuning, grids = settings_panel(selected, state.problem_type, state.config.cv_folds)
+    effort = {
+        **tuning,
+        **{k: grid_size({n: list(v) for n, v in g.items()}) for k, g in grids.items()},
+    }
     _, y, _, _ = prepare_data(state.raw_df, state.config)
     primary = _primary_metric(state, y)
     if tuple(selected) != state.selected_models:
         set_state(selected_models=tuple(selected))
     ready = bool(selected) and all(len(b) >= MIN_BASES for b in bases.values())
-    _summary(state, selected, tuning)
+    _summary(state, selected, effort)
     if selected:
-        estimate_card(estimate_for(state, selected, tuning, bases))
+        estimate_card(estimate_for(state, selected, effort, bases))
     if st.button("Train & Predict", type="primary", disabled=not ready, key="train"):
-        config = replace(get_state().config, model_params=manual, tuning=tuning)
+        config = replace(get_state().config, model_params=manual, tuning=tuning, grids=grids)
         start_training(get_state(), selected, bases, primary, config)
     nav_buttons(back=3, next_step=5 if state.run else None)
 
@@ -191,7 +196,7 @@ def _summary(state: AppState, selected: list[str], tuning: dict[str, int]) -> No
     """Plain summary of what will happen when Train & Predict is pressed."""
     cfg = state.config
     fits = sum((tuning.get(k, 0) + 1) * cfg.cv_folds + 1 for k in selected)
-    tuned = f", {len(tuning)} with auto-tuning" if tuning else ""
+    tuned = f", {len(tuning)} with hyperparameter search" if tuning else ""
     st.info(
         f"**{len(selected)} model(s){tuned}** \u2192 about {fits} model fits. "
         f"{describe(cfg)} The held-out test set ({cfg.test_size:.0%}) is scored once at the "

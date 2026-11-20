@@ -122,7 +122,7 @@ def _warnings(
         )
     if tuning:
         extra = sum(tuning.values())
-        out.append(f"Auto-tuning tries {extra} extra combinations, each with full CV.")
+        out.append(f"Hyperparameter search tries {extra} extra combinations, each with full CV.")
     if "svm" in keys and n_rows > SVM_MAX_ROWS:
         out.append(f"SVM will be skipped: it is limited to {SVM_MAX_ROWS:,} training rows.")
     elif "svm" in keys and n_rows > SVM_MAX_ROWS // 2:

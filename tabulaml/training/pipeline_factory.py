@@ -104,8 +104,24 @@ def _base_estimator(model_key: str, config: PreprocessingConfig, y: Any, as_base
         model.set_params(**class_weight_params(model_key, labels))
     manual = config.model_params.get(model_key)
     if manual:
-        model.set_params(**validate_params(model_key, manual))
+        model.set_params(**_solver_safe(model_key, validate_params(model_key, manual)))
     return model
+
+
+def _solver_safe(key: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Logistic regression: L1 / elastic net need the 'saga' solver; l1_ratio is only
+    passed for elastic net (scikit-learn warns about it otherwise)."""
+    if key != "logreg":
+        return params
+    out = dict(params)
+    penalty = out.get("penalty", "l2")
+    if penalty != "elasticnet":
+        out.pop("l1_ratio", None)
+    if penalty in ("l1", "elasticnet"):
+        out |= {"solver": "saga", "max_iter": 5000}
+        if penalty == "elasticnet":
+            out.setdefault("l1_ratio", 0.5)
+    return out
 
 
 def _check_target_transform(config: PreprocessingConfig, y: Any) -> None:

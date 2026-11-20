@@ -132,7 +132,8 @@ class PreprocessingConfig:
     decimal: str = "."  # number format for text numbers, e.g. "," for "1,25"
     thousands: str | None = None
     model_params: dict[str, dict[str, Any]] = field(default_factory=dict)  # manual params
-    tuning: dict[str, int] = field(default_factory=dict)  # model key -> search candidates
+    tuning: dict[str, int] = field(default_factory=dict)  # model key -> random-search size
+    grids: dict[str, dict[str, tuple[Any, ...]]] = field(default_factory=dict)  # grid search
     max_rows: int | None = None  # keep at most this many rows (sampled before the split)
     extra_targets: tuple[str, ...] = ()  # several targets: multi-label / multi-output
     forecast: ForecastConfig | None = None  # time-series forecasting (regression)

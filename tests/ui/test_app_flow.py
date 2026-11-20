@@ -208,3 +208,18 @@ def test_forecasting_flow_on_real_dengue_data():
     at = _click(at, "fc_go")
     _no_errors(at)
     assert any(df.value.shape[0] == run.config.forecast.horizon for df in at.dataframe)
+
+
+def test_grid_search_from_the_settings_card():
+    at = _to_step3("regression", "dengue")
+    at = _click(at, "next_4")
+    at.toggle(key="m_ridge").set_value(True)
+    at = at.run(timeout=TIMEOUT)
+    at.radio(key="mode_ridge").set_value("Grid search")
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    assert any("combinations" in str(c.value) for c in at.caption)
+    at = _train(at)
+    _no_errors(at)
+    ridge = at.session_state["tml_state"].run.result_for("ridge")
+    assert ridge.status == "ok" and len(ridge.tuning_history) == 3  # alpha: 3 values

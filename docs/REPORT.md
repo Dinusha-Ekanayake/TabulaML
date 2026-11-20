@@ -1,7 +1,7 @@
 # TabulaML: An Interactive Machine Learning Workbench with Generalized Data Preprocessing and Ensemble Model Comparison
 
 ## Abstract
-TabulaML is a Streamlit application and Python package that takes a user from a raw table to compared, usable predictive models. The user picks classification or regression, loads a CSV/Excel file or a public Sri Lankan dataset, and chooses how the model should be tested (random, grouped or time-ordered). TabulaML then holds out a test set, recommends an explained preprocessing pipeline from the training rows only, and lets the user review possible leakage. The user trains any mix of 18 individual models plus voting, stacking and a Random Forest + ANN hybrid, with default, manual or auto-tuned hyperparameters, and compares them on cross-validation before revealing the held-out test results. The preprocessing engine contains no dataset-specific code. On two genuine public Sri Lankan datasets (Colombo Tea Auction prices, Colombo dengue surveillance) and three standard datasets, Random Forest was as good as or better than the gradient boosters in most comparisons. The validation design and leakage control changed the results far more than the choice of model did.
+TabulaML is a Streamlit application and Python package that takes a user from a raw table to compared, usable predictive models. The user picks classification or regression, loads a CSV/Excel file or a public Sri Lankan dataset, and chooses how the model should be tested (random, grouped or time-ordered). TabulaML then holds out a test set, recommends an explained preprocessing pipeline from the training rows only, and lets the user review possible leakage. The user trains any mix of 18 individual models plus voting, stacking and a Random Forest + ANN hybrid, with default, manual, random-search or grid-search hyperparameters, and compares them on cross-validation before revealing the held-out test results. The preprocessing engine contains no dataset-specific code. On two genuine public Sri Lankan datasets (Colombo Tea Auction prices, Colombo dengue surveillance) and three standard datasets, Random Forest was as good as or better than the gradient boosters in most comparisons. The validation design and leakage control changed the results far more than the choice of model did.
 
 ## 1. Problem
 Comparing Random Forest with other ensemble learners on a new tabular dataset normally means writing new code each time: cleaning messy columns, choosing encodings, handling missing values and imbalance, avoiding leakage, training several models, comparing them and making predictions. Preprocessing and validation are where mistakes happen most often, and they are usually hard-coded for one dataset. TabulaML drives all of this from the data's structure and the user's choices.
@@ -53,7 +53,7 @@ The flow that keeps the evaluation honest:
 1. Drop rows with a missing target and exact duplicate rows.
 2. **Create the held-out test set first**: random, whole groups, or the latest rows in time.
 3. Make every target-based recommendation (leakage, imbalance, target transform) from the training rows only.
-4. Cross-validate each model on the training rows with the matching scheme: K-fold, group K-fold, or forward time splits. Auto-tuning uses the same folds.
+4. Cross-validate each model on the training rows with the matching scheme: K-fold, group K-fold, or forward time splits. Hyperparameter searches use the same folds.
 5. Fit on all training rows and score **once** on the test rows. The UI keeps these scores hidden until the user reveals them.
 
 Tests prove that no test row reaches any fitted step, that group and time splits never mix groups or train on the future, and that corrupting only the test labels does not change the automatic configuration.
@@ -82,7 +82,10 @@ Forecasting mode also has two baselines that every model must beat: **naive** (t
 Each model lists its main hyperparameters with a short explanation, such as number of trees, depth, learning rate, leaves or regularisation. There are three modes:
 - **Default:** sensible library defaults.
 - **Manual:** the user sets each value.
-- **Auto-tune:** a random search tries N combinations, scored with the same cross-validation on the training rows only, and keeps the best.
+- **Random search:** tries N random combinations, scored with the same cross-validation on the training rows only, and keeps the best.
+- **Grid search:** tries every combination of a few values per chosen setting, centred on the defaults (at most 200 combinations), with the same cross-validation.
+
+Regularisation is exposed wherever a model has it: L1 / L2 / elastic net for logistic regression (the `saga` solver is selected automatically for L1 and elastic net), alpha for Ridge / Lasso / Elastic Net, `reg_alpha`, `reg_lambda` and `gamma` for XGBoost, `reg_alpha` and `reg_lambda` for LightGBM, `l2_leaf_reg` for CatBoost, `l2_regularization` for HistGB, cost-complexity pruning for the decision tree, leaf sizes and depth for the forests, C for SVM, and the L2 penalty `alpha` for the neural network.
 
 The chosen values appear in the leaderboard, the report and the saved model.
 
@@ -156,7 +159,7 @@ The naive forecast is hard to beat for weekly dengue counts, because next week i
 ## 10. Limitations and future work
 - The telco data needs a Kaggle login, so it was not part of this benchmark run. Fetch it with `scripts/fetch_public_datasets.py telco`.
 - Tea and dengue are aggregate market and surveillance data, not individual patient records.
-- Only default hyperparameters were benchmarked. Auto-tuning is available in the app, but it was not used here, to keep the comparison simple and equal.
+- Only default hyperparameters were benchmarked. Random and grid search are available in the app, but they were not used here, to keep the comparison simple and equal.
 - The RF + ARIMA hybrid supports one series at a time and a fixed, user-set ARIMA order. Seasonal ARIMA and automatic order selection are left out to stay within the course scope.
 - Possible next steps: SHAP explanations and an HTML report export.
 

@@ -45,9 +45,9 @@ CHOICES = (
         "forecasting",
         ProblemType.REGRESSION,
         True,
-        "Forecasting (time series)",
+        "Forecasting",
         ":material/timeline:",
-        "Predict future values of a series from its own past.",
+        "Predict future values of a time series from its past.",
         "Next week's dengue cases in Colombo from past cases and weather.",
     ),
 )

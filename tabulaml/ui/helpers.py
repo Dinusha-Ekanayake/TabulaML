@@ -76,6 +76,38 @@ def metric_label(metric: str) -> str:
     return METRIC_LABELS.get(metric, metric)
 
 
+_FIXED_HEADERS = {
+    "model": "Model",
+    "status": "Status",
+    "fit_s": "Fit time (s)",
+    "predict_s": "Predict time (s)",
+    "imbalance": "Imbalance handling",
+    "params": "Parameters",
+    "failed_folds": "Failed folds",
+    "error": "Message",
+}
+
+
+def _header(column: str) -> str:
+    if column in _FIXED_HEADERS:
+        return _FIXED_HEADERS[column]
+    for prefix, label in (("cv_", "CV"), ("test_", "Test")):
+        if column.startswith(prefix):
+            metric = column[len(prefix) :]
+            suffix = ""
+            for end, name in (("_mean", ""), ("_std", " (std)")):
+                if metric.endswith(end):
+                    metric, suffix = metric[: -len(end)], name
+            return f"{label} {metric_label(metric)}{suffix}"
+    return column
+
+
+def display_board(board: pd.DataFrame) -> pd.DataFrame:
+    """Leaderboard with readable headers and rounded numbers (display only)."""
+    shown = board.rename(columns={c: _header(c) for c in board.columns})
+    return shown.round(4)
+
+
 def _plain(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value

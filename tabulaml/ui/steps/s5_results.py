@@ -19,7 +19,7 @@ from tabulaml.evaluation.importance import permutation_importance_df
 from tabulaml.evaluation.metrics import best_threshold, threshold_curve
 from tabulaml.models.params import param_specs
 from tabulaml.ui.components import nav_buttons
-from tabulaml.ui.helpers import metric_label, rf_vs_boosting, run_report
+from tabulaml.ui.helpers import display_board, metric_label, rf_vs_boosting, run_report
 from tabulaml.ui.state import AppState, get_state, set_state
 from tabulaml.ui.steps.s5_forecast import forecast_test_view
 from tabulaml.ui.steps.s5_rf import has_rf, rf_dashboard
@@ -62,7 +62,7 @@ def _leaderboard(run: TrainingRun, name: str, revealed: bool) -> None:
             ":material/lock: Test-set columns are hidden until you reveal the final "
             "test results (last tab)."
         )
-    st.dataframe(board, hide_index=True, width="stretch")
+    st.dataframe(display_board(board), hide_index=True, width="stretch")
     left, right = st.columns(2)
     left.download_button(
         "Download leaderboard (CSV)",
@@ -173,7 +173,7 @@ def _settings(r: ModelResult) -> None:
             width="stretch",
         )
     if r.tuning_history is not None:
-        st.markdown("**Auto-tuning: combinations tried (best first)**")
+        st.markdown("**Hyperparameter search: combinations tried (best first)**")
         st.dataframe(r.tuning_history.astype(str), hide_index=True, width="stretch")
     if r.effective_imbalance:
         st.caption(f"Class imbalance handling actually used: {r.effective_imbalance}.")

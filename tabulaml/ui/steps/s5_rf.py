@@ -93,11 +93,12 @@ def rf_dashboard(run: TrainingRun) -> None:
         sentence = verdict(table)
         if sentence:
             st.write(sentence)
-            shown = table.rename(
+            st.caption(
+                "RF advantage = how much better RF's mean CV score is (positive = RF better)."
+            )
+            shown = table[["rival", "rf_advantage", "rf_wins", "rf_losses", "ties"]].rename(
                 columns={
                     "rival": "Rival",
-                    "rf_mean": "RF mean",
-                    "rival_mean": "Rival mean",
                     "rf_advantage": "RF advantage",
                     "rf_wins": "RF wins",
                     "rf_losses": "RF losses",

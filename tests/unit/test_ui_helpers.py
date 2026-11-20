@@ -62,3 +62,28 @@ def test_cleared_fields_cover_later_steps_only():
     cleared = cleared_fields(4)
     assert "run" in cleared and "config" not in cleared
     assert cleared["ensemble_bases"] == {} and AppState().step == 1
+
+
+def test_display_board_headers():
+    import pandas as pd
+
+    from tabulaml.ui.helpers import display_board
+
+    board = pd.DataFrame(
+        {
+            "model": ["RF"],
+            "cv_f1_macro_mean": [0.81234],
+            "cv_rmse_std": [1.0],
+            "test_r2": [0.5],
+            "fit_s": [1.23456],
+        }
+    )
+    shown = display_board(board)
+    assert list(shown.columns) == [
+        "Model",
+        "CV F1 (macro)",
+        "CV RMSE (std)",
+        "Test R²",
+        "Fit time (s)",
+    ]
+    assert shown.iloc[0, 1] == 0.8123

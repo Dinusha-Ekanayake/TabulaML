@@ -59,14 +59,28 @@ PARAM_SPECS: dict[str, tuple[ParamSpec, ...]] = {
             tunable=False,
         ),
         ParamSpec(
-            "l1_ratio", "float", 0.5, 0.0, 1.0, False, (), "Elastic net only: share of L1.", False
+            "l1_ratio",
+            "float",
+            0.5,
+            0.0,
+            1.0,
+            False,
+            (),
+            "Elastic net only: 0 = pure L2 (Ridge), 1 = pure L1 (Lasso), between = both.",
+            False,
         ),
     ),
     "ridge": (_f("alpha", 1.0, 1e-3, 100.0, "L2 penalty strength.", log=True),),
     "lasso": (_f("alpha", 0.01, 1e-4, 10.0, "L1 penalty strength.", log=True),),
     "elasticnet": (
         _f("alpha", 0.01, 1e-4, 10.0, "Penalty strength.", log=True),
-        _f("l1_ratio", 0.5, 0.0, 1.0, "Share of L1 in the penalty."),
+        _f(
+            "l1_ratio",
+            0.5,
+            0.0,
+            1.0,
+            "Mix of the penalties: 0 = pure Ridge (L2), 1 = pure Lasso (L1), between = both.",
+        ),
     ),
     "dt": (
         DEPTH,

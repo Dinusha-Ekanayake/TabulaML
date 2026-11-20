@@ -17,6 +17,7 @@ from tabulaml.models.registry import (
     RECOMMENDED_FORECAST,
     list_models,
 )
+from tabulaml.training.pipeline_factory import forecast_model_unavailable
 from tabulaml.training.splits import describe
 from tabulaml.training.trainer import prepare_data
 from tabulaml.ui.components import nav_buttons
@@ -55,13 +56,21 @@ def _tags(spec) -> str:  # noqa: ANN001 - ModelSpec
     )
 
 
-def _card(spec, icon: str) -> None:  # noqa: ANN001 - ModelSpec
+def _unavailable(state: AppState, key: str) -> str | None:
+    """Reason a model cannot run with the current settings (e.g. RF + ARIMA, many series)."""
+    return forecast_model_unavailable(key, state.config) if state.config else None
+
+
+def _card(spec, icon: str, reason: str | None = None) -> None:  # noqa: ANN001 - ModelSpec
     _, best_for = meta_for(spec.key)
     with st.container(border=True, key=f"card_{spec.key}"):
         st.markdown(f"{icon} **{spec.name}**")
         st.markdown(_tags(spec), unsafe_allow_html=True)
         st.caption(f"**Best for:** {best_for}  \n{spec.description}")
-        st.toggle("Include", key=f"m_{spec.key}")
+        if reason:
+            st.session_state[f"m_{spec.key}"] = False
+            st.caption(f":material/block: **Not available:** {reason}")
+        st.toggle("Include", key=f"m_{spec.key}", disabled=bool(reason))
 
 
 def _group_header(group: str, members: list, icon: str) -> None:
@@ -72,8 +81,9 @@ def _group_header(group: str, members: list, icon: str) -> None:
         unsafe_allow_html=True,
     )
     if mid.button("All", key=f"all_{group}", width="stretch"):
+        state = get_state()
         for s in members:
-            st.session_state[f"m_{s.key}"] = True
+            st.session_state[f"m_{s.key}"] = _unavailable(state, s.key) is None
         st.rerun()
     if right.button("None", key=f"none_{group}", width="stretch"):
         for s in members:
@@ -91,7 +101,7 @@ def _model_cards(state: AppState) -> list[str]:
         cols = st.columns(3)
         for i, spec in enumerate(members):
             with cols[i % 3]:
-                _card(spec, icon)
+                _card(spec, icon, _unavailable(state, spec.key))
     return [s.key for s in specs if st.session_state.get(f"m_{s.key}")]
 
 
@@ -144,7 +154,9 @@ def _ensemble_bases(state: AppState, selected: list[str]) -> dict[str, tuple[str
 def _set_recommended(state: AppState) -> None:
     for spec in list_models(state.problem_type, state.forecasting):
         recommended = RECOMMENDED_FORECAST if state.forecasting else RECOMMENDED[state.problem_type]
-        st.session_state[f"m_{spec.key}"] = spec.key in recommended
+        st.session_state[f"m_{spec.key}"] = (
+            spec.key in recommended and _unavailable(state, spec.key) is None
+        )
 
 
 def _primary_metric(state: AppState, y) -> str:  # noqa: ANN001

@@ -106,7 +106,7 @@ _SPECS: list[ModelSpec] = [
         frozenset({REG}),
         _only(REG, lambda rs: ElasticNet(alpha=0.01, l1_ratio=0.5, max_iter=5000)),
         False,
-        "Mix of L1 and L2 regularisation.",
+        "Ridge (L2) and Lasso (L1) penalties together; l1_ratio sets the mix.",
     ),
     ModelSpec(
         "dt",

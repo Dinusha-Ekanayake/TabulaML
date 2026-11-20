@@ -153,14 +153,24 @@ def _multi(estimator: Any, config: PreprocessingConfig, as_base: bool) -> Any:
     return MultiOutputRegressor(estimator)
 
 
-def _check_forecast_model(key: str, config: PreprocessingConfig) -> None:
+def forecast_model_unavailable(key: str, config: PreprocessingConfig) -> str | None:
+    """Why a forecasting-only model cannot run with these settings (None = it can)."""
     fc = config.forecast
+    if key not in FORECAST_KEYS:
+        return None
     if fc is None:
-        raise ValueError(f"{get_model(key).name} is only available in forecasting mode.")
+        return f"{get_model(key).name} is only available in forecasting mode."
     if key == "rf_arima" and fc.series_column:
-        raise ValueError("RF + ARIMA supports a single series; remove the series column.")
+        return "RF + ARIMA supports a single series; remove the series column in step 2."
     if key == "seasonal_naive" and not (fc.seasonal_lag and fc.seasonal_lag >= fc.horizon):
-        raise ValueError("Seasonal naive needs a seasonal lag (set it in step 2).")
+        return "Seasonal naive needs a seasonal lag (set it in step 2)."
+    return None
+
+
+def _check_forecast_model(key: str, config: PreprocessingConfig) -> None:
+    reason = forecast_model_unavailable(key, config)
+    if reason:
+        raise ValueError(reason)
 
 
 def _naive(key: str, config: PreprocessingConfig) -> NaiveForecaster:

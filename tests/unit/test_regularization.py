@@ -91,3 +91,54 @@ def test_oversized_grid_fails_the_model_not_the_run(messy_df, regression_df):
     run = train_models(regression_df, replace(cfg, cv_folds=3, grids=huge), ["xgb", "ridge"])
     assert run.result_for("xgb").status == "failed" and "limit" in run.result_for("xgb").error
     assert run.result_for("ridge").status == "ok"
+
+
+def test_models_offered_match_the_problem_type():
+    from tabulaml.models.registry import list_models
+
+    classification = {s.key for s in list_models(CLS)}
+    regression = {s.key for s in list_models(REG)}
+    forecasting = {s.key for s in list_models(REG, forecasting=True)}
+    assert "logreg" in classification and "logreg" not in regression
+    assert {"linreg", "ridge", "lasso", "elasticnet", "hybrid_rf_ann"}.isdisjoint(classification)
+    assert {"naive", "seasonal_naive", "rf_arima"}.isdisjoint(classification | regression)
+    assert regression < forecasting and {"naive", "rf_arima"} <= forecasting
+
+
+def test_forecast_models_explain_when_unavailable():
+    from tabulaml.core.types import ForecastConfig, PreprocessingConfig
+    from tabulaml.training.pipeline_factory import forecast_model_unavailable
+
+    many = PreprocessingConfig(
+        REG, "y", "auto", (), forecast=ForecastConfig(series_column="shop", seasonal_lag=None)
+    )
+    assert "single series" in forecast_model_unavailable("rf_arima", many)
+    assert "seasonal lag" in forecast_model_unavailable("seasonal_naive", many)
+    assert forecast_model_unavailable("naive", many) is None
+    assert forecast_model_unavailable("rf", many) is None
+    plain = PreprocessingConfig(REG, "y", "auto", ())
+    assert "forecasting mode" in forecast_model_unavailable("naive", plain)
+
+
+def test_l1_and_l2_together_in_one_model(messy_df, regression_df):
+    """Ridge + Lasso at once: Elastic Net (regression), elastic-net logistic regression and
+    XGBoost with both reg_alpha (L1) and reg_lambda (L2), all set manually."""
+    X, y, cfg = _setup(
+        REG, messy_df, regression_df, {"elasticnet": {"alpha": 0.1, "l1_ratio": 0.3}}
+    )
+    model = inner_model(clone(build_model_pipeline("elasticnet", cfg, y=y)))
+    assert (model.alpha, model.l1_ratio) == (0.1, 0.3)
+    X, y, cfg = _setup(
+        CLS,
+        messy_df,
+        regression_df,
+        {"logreg": {"penalty": "elasticnet", "l1_ratio": 0.7, "C": 2.0}},
+    )
+    pipe = clone(build_model_pipeline("logreg", cfg, y=y)).fit(X, y)
+    model = inner_model(pipe)
+    assert (model.penalty, model.l1_ratio, model.C, model.solver) == (
+        "elasticnet",
+        0.7,
+        2.0,
+        "saga",
+    )

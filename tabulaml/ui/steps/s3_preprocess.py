@@ -336,6 +336,10 @@ def _apply_decisions(state: AppState, decisions: dict[str, bool]) -> None:
     )
 
 
+def _keep_tab() -> None:
+    """Tab selection is tracked in session state, so re-runs keep the open tab."""
+
+
 def render(state: AppState) -> None:
     st.header("3. Data quality and preprocessing")
     st.caption(
@@ -346,13 +350,15 @@ def render(state: AppState) -> None:
     state = _analyse(get_state())
     n_flagged = len([i for i in state.auto.leakage if i.column])
     quality, explore, leakage, preprocessing, preview = st.tabs(
-        [
+        key="step3_tabs",
+        on_change=_keep_tab,
+        tabs=[
             "Data quality report",
             "Explore data",
             f"Leakage review ({n_flagged})" if n_flagged else "Leakage review",
             "Preprocessing",
             "Pipeline preview",
-        ]
+        ],
     )
     with quality:
         _quality_tab(state)

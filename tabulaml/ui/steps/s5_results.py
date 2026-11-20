@@ -254,6 +254,10 @@ def _test_importance(state: AppState, result: ModelResult) -> None:
     )
 
 
+def _keep_tab() -> None:
+    """Tab selection is tracked in session state, so re-runs keep the open tab."""
+
+
 def render(state: AppState) -> None:
     st.header("5. Results")
     run = state.run
@@ -275,11 +279,9 @@ def render(state: AppState) -> None:
     names = ["Leaderboard (CV)", "Comparison"]
     if has_rf(run):
         names.append("Random Forest dashboard")
-    names += [
-        "Model details (CV)",
-        "Final test (held out)" + ("" if state.test_revealed else " \U0001f512"),
-    ]
-    tabs = dict(zip(names, st.tabs(names), strict=True))
+    names += ["Model details (CV)", "Final test (held out)"]  # labels never change: a
+    # changed label makes Streamlit re-create the tabs and jump back to the first one
+    tabs = dict(zip(names, st.tabs(names, key="results_tabs", on_change=_keep_tab), strict=True))
     with tabs["Leaderboard (CV)"]:
         _leaderboard(run, name, state.test_revealed)
     with tabs["Comparison"]:

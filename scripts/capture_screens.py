@@ -80,6 +80,7 @@ def tabular_tour(page: Page, out: Path) -> None:
     shot(page, out, "15_diagnostics")
     tab(page, "Final test")
     e.click(page, "Reveal final test results")
+    tab(page, "Final test")  # the reveal re-runs the page, which re-opens the first tab
     shot(page, out, "16_final_test")
     e.click(page, "Use a model")
     page.get_by_role("heading", name="6. Use a model").wait_for(timeout=e.STEP_TIMEOUT_MS)
@@ -101,7 +102,8 @@ def forecasting_tour(page: Page, out: Path) -> None:
     e.settle(page, 1)
     tab(page, "Final test")
     e.click(page, "Reveal final test results")
-    show(page, "naive baseline")
+    tab(page, "Final test")
+    show(page, "/naive baseline/i")
     shot(page, out, "19_forecast_test")
     e.click(page, "Use a model")
     page.get_by_role("heading", name="6. Use a model").wait_for(timeout=e.STEP_TIMEOUT_MS)

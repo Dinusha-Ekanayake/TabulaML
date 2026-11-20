@@ -9,7 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from tabulaml.config import CLOUD_MODE
+from tabulaml.config import APP_VERSION, CLOUD_MODE
 from tabulaml.core.types import ValidationIssue
 from tabulaml.ui.history import list_runs
 from tabulaml.ui.state import STEPS, AppState, can_enter, go_to
@@ -20,10 +20,8 @@ REPO_URL = "https://github.com/Dinusha-Ekanayake/TabulaML"
 
 
 def _version() -> str:
-    """Package version; works on hosts that run the source without installing it."""
-    from tabulaml import __version__
-
-    return __version__
+    """Version from tabulaml.config (works however the host starts the app)."""
+    return APP_VERSION
 
 
 AUTHOR = "Dinusha Ekanayake"
@@ -49,7 +47,12 @@ def footer(state: AppState) -> None:
     """Professional footer fixed to the bottom edge: copyright, version, data attribution
     (required by CC BY 4.0) and links. Every dynamic value is HTML-escaped."""
     dot = '<span class="tml-dot">·</span>'
-    privacy = "Your data is processed only in this session and is never sent elsewhere."
+    privacy = (
+        "Your data is processed only in this session. The deployed app stores no copies "
+        "and keeps your run history in your session only."
+        if CLOUD_MODE
+        else "Your data stays on this computer; run summaries are saved in artifacts/."
+    )
     left = (
         f"&copy; {datetime.now().year} {escape(AUTHOR)}"
         f'<span class="tml-dot">|</span>TabulaML'

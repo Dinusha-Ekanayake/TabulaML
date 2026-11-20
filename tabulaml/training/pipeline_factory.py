@@ -22,7 +22,12 @@ from sklearn.compose import TransformedTargetRegressor
 from sklearn.multioutput import MultiOutputClassifier, MultiOutputRegressor
 from sklearn.preprocessing import PowerTransformer
 
-from tabulaml.core.types import ImbalanceStrategy, PreprocessingConfig, ProblemType
+from tabulaml.core.types import (
+    ImbalanceStrategy,
+    PreprocessingConfig,
+    ProblemType,
+    ValidationScheme,
+)
 from tabulaml.forecasting.features import lag_name
 from tabulaml.forecasting.models import HybridRFARIMARegressor, NaiveForecaster
 from tabulaml.models.ensembles import HybridRFANNRegressor, build_stacking, build_voting
@@ -181,8 +186,27 @@ def _multi(estimator: Any, config: PreprocessingConfig, as_base: bool) -> Any:
     return MultiOutputRegressor(estimator)
 
 
-def forecast_model_unavailable(key: str, config: PreprocessingConfig) -> str | None:
-    """Why a forecasting-only model cannot run with these settings (None = it can)."""
+INTERNAL_CV_KEYS = frozenset({"stacking", "hybrid_rf_ann"})
+
+
+def model_unavailable(key: str, config: PreprocessingConfig) -> str | None:
+    """Why a model cannot run with these settings (None = it can).
+
+    Stacking and the RF + ANN hybrid build out-of-fold predictions with their own plain
+    K-fold, which would mix groups or use the future under grouped / time-ordered
+    validation, so they are only offered with random validation."""
+    if key in INTERNAL_CV_KEYS and config.validation != ValidationScheme.RANDOM:
+        return (
+            f"{get_model(key).name} uses its own internal cross-validation, which does not "
+            "keep groups together or respect time order. Use it with random validation."
+        )
+    return _forecast_unavailable(key, config)
+
+
+forecast_model_unavailable = model_unavailable  # name used by earlier callers
+
+
+def _forecast_unavailable(key: str, config: PreprocessingConfig) -> str | None:
     fc = config.forecast
     if key not in FORECAST_KEYS:
         return None
@@ -195,8 +219,8 @@ def forecast_model_unavailable(key: str, config: PreprocessingConfig) -> str | N
     return None
 
 
-def _check_forecast_model(key: str, config: PreprocessingConfig) -> None:
-    reason = forecast_model_unavailable(key, config)
+def _check_available(key: str, config: PreprocessingConfig) -> None:
+    reason = model_unavailable(key, config)
     if reason:
         raise ValueError(reason)
 
@@ -255,8 +279,8 @@ def build_model_pipeline(
         raise ValueError(f"{spec.name} does not support {config.problem_type.value}.")
     if not as_base:
         _check_target_transform(config, y)
-    if model_key in FORECAST_KEYS:
-        _check_forecast_model(model_key, config)
+    if not as_base:
+        _check_available(model_key, config)
     if model_key in ("naive", "seasonal_naive"):
         return _naive(model_key, config)  # predicts on the original scale: never wrapped
     if model_key == "rf_arima":

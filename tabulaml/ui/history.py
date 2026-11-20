@@ -1,8 +1,10 @@
-"""Experiment history: every training run is saved as a small JSON report.
+"""Experiment history: every training run is kept as a small JSON report.
 
-Reports live in ``artifacts/experiments/`` (git-ignored; set TABULAML_ARTIFACTS to move
-them). They hold the configuration, decisions, metrics and library versions, not the
-models, so the history stays small. Download a model bundle in step 6 to keep a model.
+Locally, reports are saved in ``artifacts/experiments/`` (git-ignored; set
+TABULAML_ARTIFACTS to move them). In cloud mode (a public deployment shared by many
+visitors) nothing is written to the server: the history lives only in the visitor's own
+browser session and disappears when the session ends. Reports hold the configuration,
+decisions, metrics and library versions, not the data or the models.
 """
 
 from __future__ import annotations
@@ -14,11 +16,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import tabulaml.config as app_config
 from tabulaml.core.types import TrainingRun
 from tabulaml.ui.helpers import run_report
 
 logger = logging.getLogger(__name__)
 MAX_LISTED = 20
+SESSION_KEY = "tml_session_history"
+
+
+def _session_runs() -> list[dict[str, Any]]:
+    import streamlit as st  # UI layer: the per-visitor store is the Streamlit session
+
+    return st.session_state.setdefault(SESSION_KEY, [])
 
 
 def _folder() -> Path:
@@ -26,7 +36,11 @@ def _folder() -> Path:
 
 
 def save_run(run: TrainingRun, dataset: str) -> Path | None:
-    """Write the run report; never let a disk problem break the app."""
+    """Keep the run report (session only in cloud mode); never let storage break the app."""
+    if app_config.CLOUD_MODE:
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        _session_runs().insert(0, {"saved_at": stamp, **run_report(run, dataset)})
+        return None
     try:
         folder = _folder()
         folder.mkdir(parents=True, exist_ok=True)
@@ -41,7 +55,9 @@ def save_run(run: TrainingRun, dataset: str) -> Path | None:
 
 
 def list_runs(limit: int = MAX_LISTED) -> list[dict[str, Any]]:
-    """Most recent first; unreadable files are skipped."""
+    """Most recent first; unreadable files are skipped. Cloud mode: this session only."""
+    if app_config.CLOUD_MODE:
+        return list(_session_runs()[:limit])
     folder = _folder()
     if not folder.exists():
         return []

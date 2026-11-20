@@ -33,8 +33,9 @@ IMBALANCE_HELP = {
     ),
     ImbalanceStrategy.SMOTE: (
         "SMOTE",
-        "Creates new rare-class rows between neighbours; "
-        "category columns keep real values (SMOTE-NC).",
+        "Creates new rare-class rows between neighbours (SMOTE-NC keeps category values "
+        "valid). Category columns are detected after encoding, which is a heuristic: for "
+        "data with many category columns, class weights or random oversampling are safer.",
     ),
     ImbalanceStrategy.UNDERSAMPLE: (
         "Random undersampling",

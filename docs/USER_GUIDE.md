@@ -3,7 +3,7 @@
 Start the app with `streamlit run app.py` and open http://localhost:8501. It works on desktops, tablets and phones.
 
 **Around the app:**
-- **Sidebar:** the six steps, **Past runs** and **Start over**. You can always go back. Changing an earlier choice clears the later steps, and the app warns you first.
+- **Sidebar:** the six steps, **Past runs** and **Start over**. On the deployed app, past runs are kept in your own session only; locally they are saved in `artifacts/experiments/`. You can always go back. Changing an earlier choice clears the later steps, and the app warns you first.
 - **Theme:** open the **⋮** menu at the top right and choose **System**, **Light** or **Dark**.
 - **Footer:** the version, the licence and source of the loaded dataset, and a privacy note.
 
@@ -44,7 +44,7 @@ A strip at the top shows the standard workflow the app follows. Pick one of thre
 | Rolling means | Averages of the last N known values |
 | Other columns | *Use their past values* (lagged by the horizon, so they are known in time) or *Do not use* |
 
-The app then checks the series:
+Splits always use whole time points: rows that share a timestamp (several series) stay on the same side, and for a horizon of *h* periods the *h* − 1 time points before each test block are left out of training. The app then checks the series:
 - **Errors** (Next is blocked): duplicate time points in a series, or a series too short for the settings.
 - **Warnings:** irregular gaps, a long horizon, a seasonal lag longer than the first fold.
 
@@ -86,7 +86,7 @@ The app first **holds out the test rows**. Every target-based recommendation use
   - Use **Recommended set**, **All / None** per group, or toggle single cards.
   - Forecasting adds **Naive**, **Seasonal naive** and **Hybrid RF + ARIMA**.
   - Regression includes **Hybrid RF + ANN**.
-- **Voting / Stacking:** choose at least two base models.
+- **Voting / Stacking:** choose at least two base models. Stacking and the RF + ANN hybrid are offered only with *random* validation, because their internal cross-validation cannot keep groups together or respect time order; with grouped or time-ordered validation their cards explain this.
 - **Model settings** (one card per model):
   - *Default*: the model's standard settings.
   - *Manual*: the form starts from the real defaults and explains every setting. Regularisation options include L1 / L2 / elastic net for logistic regression, `reg_alpha`, `reg_lambda` and `gamma` for XGBoost and LightGBM, `l2_leaf_reg` for CatBoost, and cost-complexity pruning for the decision tree.

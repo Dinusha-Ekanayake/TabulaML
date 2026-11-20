@@ -74,10 +74,7 @@ def make_holdout(
         dev, test = next(splitter.split(positions, y, groups))
         return Split(np.sort(dev), np.sort(test), groups)
     if config.validation == ValidationScheme.TIME_ORDERED:
-        key = order_key(_column(config.order_column, X, extra)).reset_index(drop=True)
-        ordered = key.sort_values(kind="stable").index.to_numpy()
-        cut = int(round(n * (1 - config.test_size)))
-        return Split(ordered[:cut], ordered[cut:], None)
+        return _time_holdout(_column(config.order_column, X, extra), config)
     dev, test = train_test_split(
         positions,
         test_size=config.test_size,
@@ -85,6 +82,52 @@ def make_holdout(
         stratify=_stratify(config, y),
     )
     return Split(np.sort(dev), np.sort(test), None)
+
+
+def horizon_gap(config: PreprocessingConfig) -> int:
+    """Time points left out between training and evaluation when forecasting h periods
+    ahead: training targets must not be later than the test rows' information cutoff."""
+    return max(0, config.forecast.horizon - 1) if config.forecast is not None else 0
+
+
+def time_ranks(values: pd.Series) -> np.ndarray:
+    """Dense rank of each row's time point (rows sharing a timestamp share a rank)."""
+    key = order_key(values).reset_index(drop=True)
+    return key.rank(method="dense").fillna(0).astype("int64").to_numpy()
+
+
+def _time_holdout(values: pd.Series, config: PreprocessingConfig) -> Split:
+    """The LATEST time points form the test set. Splitting on time points (not rows) keeps
+    every timestamp on one side, which matters when several series share timestamps."""
+    ranks = time_ranks(values)
+    times = np.unique(ranks)
+    n_test = max(1, int(round(len(times) * config.test_size)))
+    cut = times[len(times) - n_test]
+    order = np.lexsort((np.arange(len(ranks)), ranks))  # time order, stable
+    dev = order[ranks[order] < cut - horizon_gap(config)]
+    test = order[ranks[order] >= cut]
+    return Split(dev, test, ranks)
+
+
+class TimeBlockSplit:
+    """Forward cross-validation on time POINTS (``groups`` = time ranks), with an optional
+    gap of ``gap`` time points between each training block and its validation block."""
+
+    def __init__(self, n_splits: int = 5, gap: int = 0) -> None:
+        self.n_splits, self.gap = n_splits, gap
+
+    def get_n_splits(self, X: Any = None, y: Any = None, groups: Any = None) -> int:
+        return self.n_splits
+
+    def split(self, X: Any, y: Any = None, groups: Any = None):  # noqa: ANN201 - generator
+        ranks = np.arange(len(X)) if groups is None else np.asarray(groups)
+        times = np.unique(ranks)
+        inner = TimeSeriesSplit(self.n_splits, gap=self.gap)
+        for train_t, test_t in inner.split(times):
+            yield (
+                np.flatnonzero(np.isin(ranks, times[train_t])),
+                np.flatnonzero(np.isin(ranks, times[test_t])),
+            )
 
 
 def _column(name: str | None, X: pd.DataFrame, extra: pd.DataFrame | None) -> pd.Series:
@@ -105,7 +148,7 @@ def make_cv(config: PreprocessingConfig, y_dev: np.ndarray) -> Any:
             return StratifiedGroupKFold(k, shuffle=True, random_state=config.random_state)
         return GroupKFold(k)
     if config.validation == ValidationScheme.TIME_ORDERED:
-        return TimeSeriesSplit(k)
+        return TimeBlockSplit(k, gap=horizon_gap(config))
     if classification:
         return StratifiedKFold(k, shuffle=True, random_state=config.random_state)
     return KFold(k, shuffle=True, random_state=config.random_state)
@@ -121,8 +164,13 @@ def describe(config: PreprocessingConfig) -> str:
         )
     if config.validation == ValidationScheme.TIME_ORDERED:
         return (
-            f"Time-ordered by '{config.order_column}': the latest {share} of rows is the "
-            f"test set; {k}-split forward CV always trains on the past only."
+            f"Time-ordered by '{config.order_column}': the latest {share} of time points is "
+            f"the test set; {k}-split forward CV always trains on the past only"
+            + (
+                f", with a gap of {horizon_gap(config)} period(s) for the forecast horizon."
+                if horizon_gap(config)
+                else "."
+            )
         )
     stratified = _stratified(config, [0]) and not config.is_multi_output
     return (

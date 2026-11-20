@@ -337,7 +337,7 @@ with them. The <b>Hybrid RF + ARIMA</b> model fits an ARIMA model to the time pa
 series and a Random Forest to ARIMA's errors, using the lag, calendar and other features.
 In the forecasting benchmark on the Colombo dengue data
 (<code>scripts/forecast_benchmark.py</code>) it was the only model that beat the naive
-baseline on the test weeks, by 2.8% at one week ahead and 7.8% at four weeks ahead.
+baseline on the test weeks, by 2.8% at one week ahead and 6.8% at four weeks ahead.
 Figure 19 shows a run with the application's default settings.</p>
 {
         _fig(

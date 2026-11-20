@@ -1,6 +1,6 @@
 """TabulaML: interactive ML workbench for tabular data (the app entry point is ``app.py``)."""
 
-__version__ = "0.2.0"  # keep in sync with pyproject.toml (a test checks this)
+__version__ = "0.2.0"  # keep in sync with pyproject.toml and tabulaml.config.APP_VERSION
 
 if __name__ == "__main__":  # pragma: no cover - only when a host runs this file as the app
     # Some hosts (e.g. a Streamlit Cloud app created with this file as its main file) run

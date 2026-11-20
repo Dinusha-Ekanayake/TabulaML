@@ -199,7 +199,15 @@ def forecasting(page: Page, report: Report, label: str, out: Path) -> None:
     audit(page, report, f"{label}-6-forecast", out)
 
 
+def smoke(page: Page, report: Report, label: str, out: Path) -> None:
+    """Deployment smoke test: the first page renders fully (footer present, no errors)."""
+    report.check(page.locator(".tml-footer").count() == 1, f"{label}: footer missing")
+    load_sample(page, "regression", "dengue")
+    audit(page, report, f"{label}-2-data", out)
+
+
 SCENARIOS: dict[str, Callable[[Page, Report, str, Path], None]] = {
+    "smoke": smoke,
     "classification": classification,
     "several-targets": several_targets,
     "regression": regression,
@@ -241,7 +249,9 @@ def main() -> int:
     parser.add_argument("--url", default="http://localhost:8501")
     parser.add_argument("--out", default="reports/e2e", type=Path)
     parser.add_argument("--chromium", default=None, help="path to a Chromium/Chrome executable")
-    parser.add_argument("--only", nargs="*", default=list(SCENARIOS), choices=list(SCENARIOS))
+    parser.add_argument(
+        "--only", nargs="*", default=[k for k in SCENARIOS if k != "smoke"], choices=list(SCENARIOS)
+    )
     args = parser.parse_args()
     report = run(args.url, args.out, args.chromium, args.only)
     logger.info("%d checks, %d failures", report.checks, len(report.failures))

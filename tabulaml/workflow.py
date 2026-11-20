@@ -311,9 +311,13 @@ def auto_configure(df: pd.DataFrame, roles: Roles) -> AutoResult:
     prep = prepare(df, skeleton)
     split = make_holdout(prep.X, prep.y, skeleton, prep.extra)
     dev_rows = df.loc[prep.index[split.dev]]
-    cleaner = DataCleaner(decimal=roles.decimal, thousands=roles.thousands)
-    clean_all = cleaner.fit_transform(df)
-    clean_dev = cleaner.transform(dev_rows)
+    # Recommendations: a cleaner fitted on the DEVELOPMENT rows only (types and category
+    # spellings learned without the held-out rows). The full-data copy below is a separate,
+    # informational profile for the quality report and Explore tab.
+    clean_dev = DataCleaner(decimal=roles.decimal, thousands=roles.thousands).fit_transform(
+        dev_rows
+    )
+    clean_all = DataCleaner(decimal=roles.decimal, thousands=roles.thousands).fit_transform(df)
     schema_dev = profile_dataset(clean_dev)
     others = [t for t in roles.extra_targets if t in clean_dev.columns]
     leakage = (

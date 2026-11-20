@@ -19,4 +19,6 @@ def test_package_version_matches_pyproject():
     import tabulaml
 
     pyproject = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())
-    assert tabulaml.__version__ == pyproject["project"]["version"]
+    from tabulaml.config import APP_VERSION
+
+    assert tabulaml.__version__ == pyproject["project"]["version"] == APP_VERSION

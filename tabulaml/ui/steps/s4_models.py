@@ -17,7 +17,7 @@ from tabulaml.models.registry import (
     RECOMMENDED_FORECAST,
     list_models,
 )
-from tabulaml.training.pipeline_factory import forecast_model_unavailable
+from tabulaml.training.pipeline_factory import model_unavailable
 from tabulaml.training.splits import describe
 from tabulaml.training.trainer import prepare_data
 from tabulaml.ui.components import nav_buttons
@@ -58,7 +58,7 @@ def _tags(spec) -> str:  # noqa: ANN001 - ModelSpec
 
 def _unavailable(state: AppState, key: str) -> str | None:
     """Reason a model cannot run with the current settings (e.g. RF + ARIMA, many series)."""
-    return forecast_model_unavailable(key, state.config) if state.config else None
+    return model_unavailable(key, state.config) if state.config else None
 
 
 def _card(spec, icon: str, reason: str | None = None) -> None:  # noqa: ANN001 - ModelSpec

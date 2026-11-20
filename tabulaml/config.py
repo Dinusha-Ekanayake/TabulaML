@@ -4,6 +4,7 @@ import os
 
 # Lighter limits for Streamlit Community Cloud (~1 GB RAM): set TABULAML_CLOUD=1
 # (environment variable or Streamlit secret, see .streamlit/secrets.toml.example).
+APP_VERSION = "0.2.0"  # keep in sync with pyproject.toml and tabulaml.__version__ (tested)
 CLOUD_MODE = os.environ.get("TABULAML_CLOUD", "0") == "1"
 
 RANDOM_STATE = 42

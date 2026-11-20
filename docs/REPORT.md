@@ -130,20 +130,20 @@ Setup:
 - Forecasting mode with a horizon of 1 and of 4 weeks.
 - Features: target lags h … h+3, seasonal lag 52, a 4-week rolling mean, calendar parts, and weather lagged by h.
 - Time-ordered 5-fold CV on the training weeks; the test set is the latest 20 % of weeks.
-- Every model, including ARIMA inside the hybrid, only uses values known h weeks earlier.
+- Every model, including ARIMA inside the hybrid, only uses values known h weeks earlier, and for h = 4 the three weeks before each validation or test block are left out of training (horizon gap).
 
 Reproduce with `python scripts/forecast_benchmark.py`; full table in `reports/forecast_summary.md`.
 
 | Model | h = 1: CV RMSE | h = 1: test RMSE | h = 4: CV RMSE | h = 4: test RMSE |
 |---|---|---|---|---|
-| Naive (last known value) | 62.6 | 62.1 | 85.8 | 79.0 |
-| Seasonal naive (52 weeks) | 90.1 | 98.7 | 92.5 | 99.1 |
-| Ridge | 72.9 | 83.9 | 94.4 | 92.9 |
-| Random Forest | 63.6 | 67.3 | 76.2 | 83.7 |
-| XGBoost | 68.6 | 71.5 | **74.1** | 80.5 |
-| **Hybrid RF + ARIMA** | **61.6** | **60.4** | 74.7 | **72.8** |
+| Naive (last known value) | 62.6 | 62.1 | 85.7 | 79.0 |
+| Seasonal naive (52 weeks) | 90.1 | 98.7 | 91.3 | 99.1 |
+| Ridge | 75.9 | 84.2 | 105.7 | 91.0 |
+| Random Forest | 63.6 | 67.3 | 77.1 | 84.4 |
+| XGBoost | 68.6 | 71.5 | **74.6** | 83.2 |
+| **Hybrid RF + ARIMA** | **61.6** | **60.4** | 74.9 | **73.6** |
 
-The naive forecast is hard to beat for weekly dengue counts, because next week is usually close to this week. Random Forest and XGBoost alone did *not* beat it on the test weeks. The hybrid did beat it, by 2.8 % at one week and 7.8 % at four weeks: ARIMA captures the series' own momentum, and the forest corrects it with weather and seasonality. A first version of the hybrid forecast every test week from the end of the training data (up to a year ahead), which made it look poor (test RMSE 93.8). Giving ARIMA the same information as the other models, values up to h weeks back, fixed this. It shows that a fair comparison needs the *same information* for every model, not only the same split.
+The naive forecast is hard to beat for weekly dengue counts, because next week is usually close to this week. Random Forest and XGBoost alone did *not* beat it on the test weeks. The hybrid did beat it, by 2.8 % at one week and 6.8 % at four weeks: ARIMA captures the series' own momentum, and the forest corrects it with weather and seasonality. A first version of the hybrid forecast every test week from the end of the training data (up to a year ahead), which made it look poor (test RMSE 93.8). Giving ARIMA the same information as the other models, values up to h weeks back, fixed this. It shows that a fair comparison needs the *same information* for every model, not only the same split.
 
 ## 9. Discussion
 **Random Forest vs gradient boosting.** There was no single winner. On the two real Sri Lankan regression tasks, Random Forest gave the best held-out test RMSE: dengue 65.2 cases per week, tea price 102.3 LKR. In cross-validation it beat XGBoost and LightGBM on the small, noisy dengue series. Boosters edged ahead in a few comparisons, but by small margins (0.002 F1 on the tea catalogue, 0.004 AUC on breast cancer). With default settings, Random Forest is a very strong and low-maintenance choice for tabular data; boosting can win slightly, especially after tuning.
@@ -160,6 +160,10 @@ The naive forecast is hard to beat for weekly dengue counts, because next week i
 - The telco data needs a Kaggle login, so it was not part of this benchmark run. Fetch it with `scripts/fetch_public_datasets.py telco`.
 - Tea and dengue are aggregate market and surveillance data, not individual patient records.
 - Only default hyperparameters were benchmarked. Random and grid search are available in the app, but they were not used here, to keep the comparison simple and equal.
+- Grouped validation on the tea data holds out whole weekly sales. It measures performance on sales the model has not seen, not forecasting accuracy for future auctions; a time-ordered design would be needed for that claim.
+- The catalogue-classification task assumes a broker classifies a lot from its grade, elevation, region and the sale's weather and exchange-rate context, all known when the catalogue is compiled; the `category` column is excluded because it determines the catalogue.
+- SMOTE detects category columns after encoding, which is a heuristic; class weights or random oversampling are the safer choice for data with many category columns.
+- Stacking and the RF + ANN hybrid build out-of-fold predictions with plain internal K-fold, so they are offered only with random validation.
 - The RF + ARIMA hybrid supports one series at a time and a fixed, user-set ARIMA order. Seasonal ARIMA and automatic order selection are left out to stay within the course scope.
 - Possible next steps: SHAP explanations and an HTML report export.
 

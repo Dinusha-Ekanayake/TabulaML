@@ -30,6 +30,7 @@ try:
         s5_results,
         s6_predict,
     )
+    from tabulaml.ui.steps.s4_training import finish_training, is_training
 except ImportError as exc:  # friendly message instead of a traceback on a broken install
     st.error(
         f"TabulaML could not start: a dependency is missing ({exc}). "
@@ -50,10 +51,13 @@ PAGES = {
     6: s6_predict.render,
 }
 
+finish_training()  # a background run that just ended is stored before rendering
 state = get_state()
 if not can_enter(state, state.step):  # e.g. stale step after a reset
     state = set_state(step=1)
 sidebar_stepper(state)
+if is_training() and state.step != 4:
+    st.sidebar.info("Training is running in the background (step 4).", icon=":material/sync:")
 if CLOUD_MODE:
     st.sidebar.caption(":material/cloud: Cloud mode: smaller upload limit and lighter models.")
 results_will_reset_warning(state)

@@ -116,6 +116,12 @@ PARAM_SPECS: dict[str, tuple[ParamSpec, ...]] = {
         _f("learning_rate_init", 1e-3, 1e-4, 1e-1, "Initial learning rate.", log=True),
     ),
     "hybrid_rf_ann": (TREES,),
+    "rf_arima": (
+        _i("p", 1, 0, 3, "ARIMA: how many past values the series depends on (AR order)."),
+        _i("d", 1, 0, 2, "ARIMA: differencing; 1 removes a trend, 0 keeps the level."),
+        _i("q", 1, 0, 3, "ARIMA: how many past forecast errors are used (MA order)."),
+        TREES,
+    ),
 }
 
 

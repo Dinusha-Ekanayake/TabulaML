@@ -21,9 +21,18 @@ from tabulaml.models.params import param_specs
 from tabulaml.ui.components import nav_buttons
 from tabulaml.ui.helpers import metric_label, rf_vs_boosting, run_report
 from tabulaml.ui.state import AppState, get_state, set_state
+from tabulaml.ui.steps.s5_forecast import forecast_test_view
+from tabulaml.ui.steps.s5_rf import has_rf, rf_dashboard
 
 TILE_METRICS = {
-    ProblemType.CLASSIFICATION: ("accuracy", "f1", "f1_macro", "roc_auc", "pr_auc"),
+    ProblemType.CLASSIFICATION: (
+        "accuracy",
+        "f1",
+        "f1_macro",
+        "subset_accuracy",
+        "roc_auc",
+        "pr_auc",
+    ),
     ProblemType.REGRESSION: ("rmse", "mae", "r2"),
 }
 
@@ -116,6 +125,16 @@ def _threshold_tool(state: AppState, run: TrainingRun, r: ModelResult, y, proba)
     st.plotly_chart(plots.calibration_fig(y, proba[:, pos], pos, label), width="stretch")
 
 
+def _target_slice(run: TrainingRun, y, pred):  # noqa: ANN001, ANN202
+    """With several targets, diagnostics show one chosen target at a time."""
+    if not run.is_multi_output:
+        return y, pred, list(run.class_labels or [])
+    names = list(run.config.targets)
+    name = st.selectbox("Target", names, key="diag_target")
+    j = names.index(name)
+    return y[:, j], pred[:, j], list(run.target_labels.get(name, ()))
+
+
 def _dev_details(state: AppState, run: TrainingRun, r: ModelResult) -> None:
     y, pred, proba = _oof(run, r)
     if not len(y):
@@ -125,12 +144,12 @@ def _dev_details(state: AppState, run: TrainingRun, r: ModelResult) -> None:
         f"Out-of-fold predictions on {len(y):,} training rows: every row is predicted "
         "by a model that did not see it."
     )
+    y, pred, labels = _target_slice(run, y, pred)
     if run.problem_type == ProblemType.REGRESSION:
         left, right = st.columns(2)
         left.plotly_chart(plots.pred_vs_actual_fig(y, pred), width="stretch")
         right.plotly_chart(plots.residuals_fig(y, pred), width="stretch")
         return
-    labels = list(run.class_labels or [])
     st.plotly_chart(plots.confusion_matrix_fig(y, pred.astype(int), labels), width="stretch")
     if proba is not None:
         left, right = st.columns(2)
@@ -200,6 +219,11 @@ def _final_test(state: AppState, name: str) -> None:
             plots.leaderboard_bar(board, metric, metric_label(metric), metric in LOWER_IS_BETTER),
             width="stretch",
         )
+    if best.per_target:
+        st.markdown(f"**Per target ({best.name}, test set)**")
+        table = pd.DataFrame(best.per_target).T.rename_axis("target").reset_index()
+        st.dataframe(table, hide_index=True, width="stretch")
+    forecast_test_view(run, best)
     sentence = rf_vs_boosting(run)
     if sentence:
         st.info(f"**Random Forest vs gradient boosting:** {sentence}", icon="\U0001f332")
@@ -233,6 +257,12 @@ def _test_importance(state: AppState, result: ModelResult) -> None:
 def render(state: AppState) -> None:
     st.header("5. Results")
     run = state.run
+    if run.cancelled:
+        st.warning(
+            "Training was cancelled: only the models that finished are shown. "
+            "Go back to step 4 to train the rest.",
+            icon=":material/stop_circle:",
+        )
     for r in run.results:
         if r.status == "failed":
             st.error(f"{r.name} failed: {r.error}")
@@ -242,20 +272,23 @@ def render(state: AppState) -> None:
         return
     name = state.card.title if state.card else (state.filename or "uploaded data")
     _cv_tiles(run)
-    tabs = st.tabs(
-        [
-            "Leaderboard (CV)",
-            "Comparison",
-            "Model details (CV)",
-            "Final test (held out)" + ("" if state.test_revealed else " \U0001f512"),
-        ]
-    )
-    with tabs[0]:
+    names = ["Leaderboard (CV)", "Comparison"]
+    if has_rf(run):
+        names.append("Random Forest dashboard")
+    names += [
+        "Model details (CV)",
+        "Final test (held out)" + ("" if state.test_revealed else " \U0001f512"),
+    ]
+    tabs = dict(zip(names, st.tabs(names), strict=True))
+    with tabs["Leaderboard (CV)"]:
         _leaderboard(run, name, state.test_revealed)
-    with tabs[1]:
+    with tabs["Comparison"]:
         _comparison(run)
-    with tabs[2]:
+    if "Random Forest dashboard" in tabs:
+        with tabs["Random Forest dashboard"]:
+            rf_dashboard(run)
+    with tabs["Model details (CV)"]:
         _details(state)
-    with tabs[3]:
+    with tabs[names[-1]]:
         _final_test(get_state(), name)
     nav_buttons(back=4, next_step=6, next_label="Use a model")

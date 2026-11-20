@@ -13,6 +13,7 @@ from tabulaml.inference.persistence import bundle_bytes
 from tabulaml.inference.predictor import Predictor, make_input_spec
 from tabulaml.ui.components import issues_view, nav_buttons
 from tabulaml.ui.state import AppState, set_state
+from tabulaml.ui.steps.s6_forecast import forecast_tab
 
 
 def _input_spec(state: AppState) -> AppState:
@@ -53,6 +54,12 @@ def _single(predictor: Predictor, state: AppState) -> None:
     if not submitted:
         return
     out = predictor.predict_one(record)
+    if isinstance(out["prediction"], dict):  # several targets: one card per target
+        cols = st.columns(min(len(out["prediction"]), 4))
+        for i, (name, value) in enumerate(out["prediction"].items()):
+            shown = f"{value:,.3f}" if isinstance(value, float) else str(value)
+            cols[i % len(cols)].metric(name, shown)
+        return
     if state.problem_type == ProblemType.CLASSIFICATION:
         st.success(f"Prediction: **{out['prediction']}**")
         if out["probabilities"]:
@@ -66,7 +73,9 @@ def _batch(predictor: Predictor) -> None:
         "The file needs these columns: " + ", ".join(f"`{c}`" for c in predictor.feature_columns)
     )
     file = st.file_uploader(
-        "CSV or Excel file to score", type=["csv", "txt", "xlsx", "xls"], key="batch_file"
+        "CSV, Excel, JSON or Parquet file to score",
+        type=["csv", "txt", "xlsx", "xls", "json", "jsonl", "parquet"],
+        key="batch_file",
     )
     if file is None:
         return
@@ -106,7 +115,6 @@ def _batch(predictor: Predictor) -> None:
 
 def render(state: AppState) -> None:
     st.header("6. Use a model")
-    state = _input_spec(state)
     run = state.run
     ok = {r.name: r for r in run.results if r.status == "ok"}
     names = list(ok)
@@ -118,6 +126,10 @@ def render(state: AppState) -> None:
         help="Only fully validated models are listed.",
     )
     result = ok[choice]
+    if run.config.forecast is not None:
+        _forecast_page(state, run, result)
+        return
+    state = _input_spec(state)
     threshold = state.thresholds.get(result.key)
     predictor = Predictor(
         result.pipeline,
@@ -126,6 +138,7 @@ def render(state: AppState) -> None:
         state.input_spec,
         threshold=threshold,
         positive_index=run.positive_index,
+        target_labels=run.target_labels,
     )
     if threshold is not None:
         st.caption(
@@ -138,12 +151,25 @@ def render(state: AppState) -> None:
     with batch:
         _batch(predictor)
     with export:
-        st.warning(
-            "Model bundles are Python pickle files. Only load bundles you created "
-            "yourself; never open one from an untrusted source.",
-            icon="\U0001f512",
-        )
-        _downloads(result, run, state, threshold)
+        _bundle_tab(result, run, state, threshold)
+    nav_buttons(back=5, next_step=None)
+
+
+def _bundle_tab(result, run, state: AppState, threshold: float | None) -> None:  # noqa: ANN001
+    st.warning(
+        "Model bundles are Python pickle files. Only load bundles you created "
+        "yourself; never open one from an untrusted source.",
+        icon="\U0001f512",
+    )
+    _downloads(result, run, state, threshold)
+
+
+def _forecast_page(state: AppState, run, result) -> None:  # noqa: ANN001
+    forecast, export = st.tabs(["Forecast next periods", "Download model"])
+    with forecast:
+        forecast_tab(state, run, result)
+    with export:
+        _bundle_tab(result, run, state, None)
     nav_buttons(back=5, next_step=None)
 
 

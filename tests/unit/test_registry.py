@@ -43,7 +43,13 @@ def _config(df, target, ptype, **overrides):
     return cfg.__class__(**{**cfg.__dict__, **overrides})
 
 
-CASES = [(k, t) for k, s in MODEL_REGISTRY.items() for t in s.tasks if k not in ENSEMBLE_KEYS]
+# Forecasting-only models need forecast features; they are covered in test_forecasting.py.
+CASES = [
+    (k, t)
+    for k, s in MODEL_REGISTRY.items()
+    for t in s.tasks
+    if k not in ENSEMBLE_KEYS and not s.forecast_only
+]
 
 
 @pytest.mark.parametrize(("key", "ptype"), CASES)

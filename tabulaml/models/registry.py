@@ -6,8 +6,6 @@ the RF+ANN hybrid are assembled in ``models.ensembles`` from user-chosen base le
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -35,52 +33,27 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from xgboost import XGBClassifier, XGBRegressor
 
 from tabulaml.config import SVM_MAX_ROWS  # noqa: F401 - re-exported for the trainer
-from tabulaml.core.types import ModelProfile, ProblemType
+from tabulaml.core.types import ProblemType
+from tabulaml.models.composite_specs import COMPOSITE_SPECS
+from tabulaml.models.spec import (  # noqa: F401 - ModelSpec / Factory re-exported
+    BOTH,
+    CLS,
+    REG,
+    SCALED,
+    TREE,
+    Factory,
+    ModelSpec,
+    _only,
+    _pick,
+)
 
-CLS, REG = ProblemType.CLASSIFICATION, ProblemType.REGRESSION
-BOTH = frozenset({CLS, REG})
-TREE, SCALED = ModelProfile.TREE, ModelProfile.SCALE_SENSITIVE
 ENSEMBLE_KEYS = frozenset({"voting", "stacking", "hybrid_rf_ann"})
+FORECAST_KEYS = frozenset({"naive", "seasonal_naive", "rf_arima"})
 RECOMMENDED = {
     CLS: ["logreg", "rf", "xgb", "lgbm", "catboost"],
     REG: ["ridge", "rf", "xgb", "lgbm", "catboost"],
 }
-
-Factory = Callable[[ProblemType, int], Any]
-
-
-@dataclass(frozen=True)
-class ModelSpec:
-    key: str
-    name: str
-    group: str
-    profile: ModelProfile
-    tasks: frozenset[ProblemType]
-    factory: Factory
-    supports_class_weight: bool
-    description: str
-
-
-def _pick(cls_factory: Callable[[int], Any], reg_factory: Callable[[int], Any]) -> Factory:
-    def factory(problem_type: ProblemType, random_state: int) -> Any:
-        maker = cls_factory if problem_type == CLS else reg_factory
-        return maker(random_state)
-
-    return factory
-
-
-def _only(task: ProblemType, maker: Callable[[int], Any]) -> Factory:
-    def factory(problem_type: ProblemType, random_state: int) -> Any:
-        if problem_type != task:
-            raise ValueError(f"Model only supports {task.value}.")
-        return maker(random_state)
-
-    return factory
-
-
-def _ensemble_placeholder(problem_type: ProblemType, random_state: int) -> Any:
-    raise ValueError("Ensembles are built by tabulaml.models.ensembles from base learners.")
-
+RECOMMENDED_FORECAST = ["naive", "ridge", "rf", "xgb", "lgbm", "rf_arima"]
 
 _BOOST = {"n_estimators": 400, "learning_rate": 0.05}
 
@@ -334,43 +307,15 @@ _SPECS: list[ModelSpec] = [
         False,
         "Feed-forward neural network (multi-layer perceptron).",
     ),
-    ModelSpec(
-        "voting",
-        "Voting Ensemble",
-        "Ensembles",
-        TREE,
-        BOTH,
-        _ensemble_placeholder,
-        False,
-        "Averages the predictions of the chosen base models (soft voting).",
-    ),
-    ModelSpec(
-        "stacking",
-        "Stacking Ensemble",
-        "Ensembles",
-        TREE,
-        BOTH,
-        _ensemble_placeholder,
-        False,
-        "A meta-model learns how to combine out-of-fold base-model predictions.",
-    ),
-    ModelSpec(
-        "hybrid_rf_ann",
-        "Hybrid RF + ANN",
-        "Ensembles",
-        TREE,
-        frozenset({REG}),
-        _ensemble_placeholder,
-        False,
-        "Random Forest, plus a neural network trained on the forest's out-of-fold residuals.",
-    ),
+    *COMPOSITE_SPECS,
 ]
 
 MODEL_REGISTRY: dict[str, ModelSpec] = {s.key: s for s in _SPECS}
 
 
-def list_models(problem_type: ProblemType) -> list[ModelSpec]:
-    return [s for s in _SPECS if problem_type in s.tasks]
+def list_models(problem_type: ProblemType, forecasting: bool = False) -> list[ModelSpec]:
+    """Models for a problem type; forecasting mode adds baselines and the RF + ARIMA hybrid."""
+    return [s for s in _SPECS if problem_type in s.tasks and (forecasting or not s.forecast_only)]
 
 
 def get_model(key: str) -> ModelSpec:

@@ -74,11 +74,17 @@ def test_failing_model_does_not_abort_run(monkeypatch):
 
     monkeypatch.setattr(trainer, "build_model_pipeline", broken)
     seen = []
-    run = train_models(df, cfg, ["dt", "logreg"], progress=lambda k, i, n: seen.append(k))
+    run = train_models(
+        df, cfg, ["dt", "logreg"], progress=lambda label, i, n: seen.append((label, i, n))
+    )
     status = {r.key: r.status for r in run.results}
     assert status == {"dt": "failed", "logreg": "ok"}
     assert "boom" in run.result_for("dt").error
-    assert seen == ["dt", "logreg", "done"]
+    total = 2 * (cfg.cv_folds + 1)
+    assert all(n == total for _, _, n in seen)
+    assert [i for _, i, _ in seen] == sorted(i for _, i, _ in seen)  # never goes backwards
+    assert seen[-1] == ("done", total, total)
+    assert any(label.startswith("Logistic Regression: fold") for label, _, _ in seen)
 
 
 def test_smote_and_voting_run():

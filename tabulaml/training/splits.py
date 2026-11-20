@@ -50,8 +50,13 @@ def order_key(values: pd.Series) -> pd.Series:
     return values.astype(str)
 
 
+def _stratified(config: PreprocessingConfig, y: Any) -> bool:
+    """Stratify only single-target classification (2-D labels cannot be stratified)."""
+    return config.problem_type == ProblemType.CLASSIFICATION and np.ndim(y) == 1
+
+
 def _stratify(config: PreprocessingConfig, y: np.ndarray) -> np.ndarray | None:
-    return y if config.problem_type == ProblemType.CLASSIFICATION else None
+    return y if _stratified(config, y) else None
 
 
 def make_holdout(
@@ -94,7 +99,7 @@ def _column(name: str | None, X: pd.DataFrame, extra: pd.DataFrame | None) -> pd
 def make_cv(config: PreprocessingConfig, y_dev: np.ndarray) -> Any:
     """CV splitter for the dev rows (rows must already be in time order for time_ordered)."""
     k = config.cv_folds
-    classification = config.problem_type == ProblemType.CLASSIFICATION
+    classification = _stratified(config, y_dev)
     if config.validation == ValidationScheme.GROUPED:
         if classification:
             return StratifiedGroupKFold(k, shuffle=True, random_state=config.random_state)
@@ -119,7 +124,8 @@ def describe(config: PreprocessingConfig) -> str:
             f"Time-ordered by '{config.order_column}': the latest {share} of rows is the "
             f"test set; {k}-split forward CV always trains on the past only."
         )
+    stratified = _stratified(config, [0]) and not config.is_multi_output
     return (
-        f"Random {'stratified ' if config.problem_type == ProblemType.CLASSIFICATION else ''}"
+        f"Random {'stratified ' if stratified else ''}"
         f"split ({share} test) and {k}-fold CV, for independent rows."
     )

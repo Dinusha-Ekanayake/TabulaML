@@ -40,12 +40,14 @@ IMBALANCE_HELP = {
 }
 
 
-def _settings() -> tuple[float, int, int]:
+def _settings() -> tuple[float, int, int, int | None]:
     """Evaluation settings live in widget state so changing them re-runs the analysis."""
+    cap = int(st.session_state.get("rs_cap", 0) or 0)
     return (
         float(st.session_state.get("rs_test", 0.2)),
         int(st.session_state.get("rs_folds", 5)),
         int(st.session_state.get("rs_seed", 42)),
+        cap or None,
     )
 
 
@@ -53,7 +55,7 @@ def _analyse(state: AppState) -> AppState:
     """Holdout first, then recommendations from the training rows only (workflow)."""
     if state.config is not None and state.auto is not None:
         return state
-    test, folds, seed = _settings()
+    test, folds, seed, cap = _settings()
     roles = Roles(
         target=state.target,
         problem_type=state.problem_type,
@@ -65,6 +67,9 @@ def _analyse(state: AppState) -> AppState:
         random_state=seed,
         decimal=state.decimal,
         positive_class=state.positive_class,
+        max_rows=cap,
+        extra_targets=state.extra_targets,
+        forecast=state.forecast if state.forecasting else None,
     )
     with st.spinner("Holding out the test rows, profiling and recommending a pipeline..."):
         auto = auto_configure(state.raw_df, roles)
@@ -149,7 +154,12 @@ def _global_controls(state: AppState) -> None:
         "rare_category_min_frequency": rare,
         "high_cardinality_threshold": int(high),
     }
-    if state.problem_type == ProblemType.CLASSIFICATION:
+    if state.problem_type == ProblemType.CLASSIFICATION and cfg.is_multi_output:
+        c3.caption(
+            "Class imbalance: class weights and resampling need a single target, so they "
+            "are off when you predict several targets."
+        )
+    elif state.problem_type == ProblemType.CLASSIFICATION:
         options = list(ImbalanceStrategy)
         imb = c3.selectbox(
             "Class imbalance",
@@ -161,8 +171,8 @@ def _global_controls(state: AppState) -> None:
         c3.caption(IMBALANCE_HELP[imb][1])
         changes["imbalance"] = imb
     else:
-        y = clean_target(state.raw_df[state.target], regression=True)
-        allowed = ["none", "yeo_johnson"] + (["log1p"] if y.min() > -1 else [])
+        low = min(clean_target(state.raw_df[t], regression=True).min() for t in cfg.targets)
+        allowed = ["none", "yeo_johnson"] + (["log1p"] if low > -1 else [])
         current = cfg.target_transform if cfg.target_transform in allowed else "none"
         tt = c3.selectbox(
             "Target transform",
@@ -239,13 +249,24 @@ def _preview_tab(state: AppState) -> None:
     )
 
 
-def _run_settings() -> None:
+def _run_settings(n_rows: int) -> None:
     """Changing these re-runs the analysis (a new holdout means new recommendations)."""
-    with st.expander("Evaluation settings (test share, folds, seed)"):
-        c1, c2, c3 = st.columns(3)
+    with st.expander("Evaluation settings (test share, folds, seed, row cap)"):
+        c1, c2, c3, c4 = st.columns(4)
         c1.slider("Test set share", 0.1, 0.4, 0.2, 0.05, key="rs_test", on_change=_restart_analysis)
         c2.slider("Cross-validation folds", 2, 10, 5, key="rs_folds", on_change=_restart_analysis)
         c3.number_input("Random seed", 0, 10_000, 42, key="rs_seed", on_change=_restart_analysis)
+        c4.number_input(
+            "Row cap (0 = all rows)",
+            0,
+            max(n_rows, 1),
+            0,
+            step=1000,
+            key="rs_cap",
+            on_change=_restart_analysis,
+            help="Train on at most this many rows to save time. Time-ordered data keeps the "
+            "latest rows; grouped data keeps whole groups; otherwise a random sample.",
+        )
         st.caption(
             "Changing these re-creates the held-out test set and re-runs the "
             "recommendations; custom edits are reset."
@@ -315,7 +336,7 @@ def render(state: AppState) -> None:
         "Check the data, review possible leakage, and see exactly how each model "
         "family will prepare it."
     )
-    _run_settings()
+    _run_settings(len(state.raw_df))
     state = _analyse(get_state())
     n_flagged = len([i for i in state.auto.leakage if i.column])
     quality, leakage, preprocessing, preview = st.tabs(

@@ -18,17 +18,21 @@ from imblearn.over_sampling import RandomOverSampler
 from imblearn.pipeline import Pipeline
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.compose import TransformedTargetRegressor
+from sklearn.multioutput import MultiOutputClassifier, MultiOutputRegressor
 from sklearn.preprocessing import PowerTransformer
 
 from tabulaml.core.types import ImbalanceStrategy, PreprocessingConfig, ProblemType
+from tabulaml.forecasting.features import lag_name
+from tabulaml.forecasting.models import HybridRFARIMARegressor, NaiveForecaster
 from tabulaml.models.ensembles import HybridRFANNRegressor, build_stacking, build_voting
 from tabulaml.models.params import param_specs, validate_params
-from tabulaml.models.registry import class_weight_params, get_model
+from tabulaml.models.registry import FORECAST_KEYS, class_weight_params, get_model
 from tabulaml.preprocessing.builder import build_feature_transformer
 from tabulaml.preprocessing.cleaning import DataCleaner
 from tabulaml.training.samplers import CategoryAwareSMOTE
 
 SMOTE_MAX_NEIGHBOURS = 5
+_WRAPPERS = (MultiOutputClassifier, MultiOutputRegressor)
 _SAMPLERS = {
     ImbalanceStrategy.SMOTE,
     ImbalanceStrategy.UNDERSAMPLE,
@@ -56,7 +60,7 @@ def _smote(config: PreprocessingConfig, y: Any) -> CategoryAwareSMOTE | None:
 
 
 def _sampler(config: PreprocessingConfig, y: Any, as_base: bool) -> Any:
-    if as_base or config.problem_type != ProblemType.CLASSIFICATION:
+    if as_base or config.problem_type != ProblemType.CLASSIFICATION or config.is_multi_output:
         return None
     if config.imbalance == ImbalanceStrategy.SMOTE:
         return _smote(config, y)
@@ -68,7 +72,7 @@ def _sampler(config: PreprocessingConfig, y: Any, as_base: bool) -> Any:
 
 
 def _wants_class_weight(config: PreprocessingConfig, as_base: bool) -> bool:
-    if config.problem_type != ProblemType.CLASSIFICATION:
+    if config.problem_type != ProblemType.CLASSIFICATION or config.is_multi_output:
         return False
     if config.imbalance == ImbalanceStrategy.CLASS_WEIGHT:
         return True
@@ -79,6 +83,10 @@ def effective_imbalance(key: str, config: PreprocessingConfig, as_base: bool = F
     """What the model REALLY uses for class imbalance, in plain words."""
     if config.problem_type != ProblemType.CLASSIFICATION:
         return ""
+    if config.is_multi_output:
+        if config.imbalance == ImbalanceStrategy.NONE:
+            return "none"
+        return "none (class weights and resampling are not available with several targets)"
     if key in ("voting", "stacking") and config.imbalance in _SAMPLERS:
         return "class weights on base models (samplers are not used inside ensembles)"
     if _wants_class_weight(config, as_base) and not get_model(key).supports_class_weight:
@@ -89,6 +97,8 @@ def effective_imbalance(key: str, config: PreprocessingConfig, as_base: bool = F
 def _base_estimator(model_key: str, config: PreprocessingConfig, y: Any, as_base: bool) -> Any:
     if model_key == "hybrid_rf_ann":
         model = HybridRFANNRegressor(random_state=config.random_state)
+    elif model_key == "rf_arima":
+        model = HybridRFARIMARegressor(random_state=config.random_state)
     else:
         model = get_model(model_key).factory(config.problem_type, config.random_state)
     if _wants_class_weight(config, as_base):
@@ -120,6 +130,31 @@ def _wrap_target(estimator: Any, config: PreprocessingConfig, as_base: bool) -> 
     return estimator
 
 
+def _multi(estimator: Any, config: PreprocessingConfig, as_base: bool) -> Any:
+    """One copy of the model per target when there are several targets."""
+    if as_base or not config.is_multi_output:
+        return estimator
+    if config.problem_type == ProblemType.CLASSIFICATION:
+        return MultiOutputClassifier(estimator)
+    return MultiOutputRegressor(estimator)
+
+
+def _check_forecast_model(key: str, config: PreprocessingConfig) -> None:
+    fc = config.forecast
+    if fc is None:
+        raise ValueError(f"{get_model(key).name} is only available in forecasting mode.")
+    if key == "rf_arima" and fc.series_column:
+        raise ValueError("RF + ARIMA supports a single series; remove the series column.")
+    if key == "seasonal_naive" and not (fc.seasonal_lag and fc.seasonal_lag >= fc.horizon):
+        raise ValueError("Seasonal naive needs a seasonal lag (set it in step 2).")
+
+
+def _naive(key: str, config: PreprocessingConfig) -> NaiveForecaster:
+    fc = config.forecast
+    k = fc.seasonal_lag if key == "seasonal_naive" else fc.horizon
+    return NaiveForecaster(column=lag_name(config.target, k))
+
+
 def make_cleaner(config: PreprocessingConfig) -> DataCleaner:
     """Cleaner that honours the user's column types and number format."""
     types = {c.name: c.feature_type for c in config.columns if c.include}
@@ -145,10 +180,16 @@ def build_model_pipeline(
         raise ValueError(f"{spec.name} does not support {config.problem_type.value}.")
     if not as_base:
         _check_target_transform(config, y)
+    if model_key in FORECAST_KEYS:
+        _check_forecast_model(model_key, config)
+    if model_key in ("naive", "seasonal_naive"):
+        return _naive(model_key, config)  # predicts on the original scale: never wrapped
     if model_key == "voting":
-        return _wrap_target(build_voting(base_keys, config, y), config, as_base)
+        ensemble = _multi(build_voting(base_keys, config, y), config, as_base)
+        return _wrap_target(ensemble, config, as_base)
     if model_key == "stacking":
-        return _wrap_target(build_stacking(base_keys, config, y), config, as_base)
+        ensemble = _multi(build_stacking(base_keys, config, y), config, as_base)
+        return _wrap_target(ensemble, config, as_base)
     steps: list[tuple[str, Any]] = [
         ("cleaner", make_cleaner(config)),
         ("features", build_feature_transformer(config, spec.profile)),
@@ -156,7 +197,8 @@ def build_model_pipeline(
     sampler = _sampler(config, y, as_base)
     if sampler is not None:
         steps.append(("sampler", sampler))
-    steps.append(("model", _base_estimator(model_key, config, y, as_base)))
+    model = _base_estimator(model_key, config, y, as_base)
+    steps.append(("model", _multi(model, config, as_base)))
     return _wrap_target(Pipeline(steps), config, as_base)
 
 
@@ -164,7 +206,8 @@ def inner_model(estimator: Any) -> Any:
     """The final model inside a (target-wrapped) pipeline."""
     est = getattr(estimator, "regressor", estimator)
     steps = getattr(est, "named_steps", None)
-    return steps["model"] if steps and "model" in steps else est
+    model = steps["model"] if steps and "model" in steps else est
+    return model.estimator if isinstance(model, _WRAPPERS) else model
 
 
 def param_prefix(estimator: Any) -> str | None:
@@ -173,7 +216,10 @@ def param_prefix(estimator: Any) -> str | None:
     base = "regressor__" if est is not None else ""
     target = est if est is not None else estimator
     steps = getattr(target, "named_steps", None)
-    return f"{base}model__" if steps and "model" in steps else None
+    if not steps or "model" not in steps:
+        return None
+    inner = "estimator__" if isinstance(steps["model"], _WRAPPERS) else ""
+    return f"{base}model__{inner}"
 
 
 def model_params(estimator: Any, key: str) -> dict[str, Any]:

@@ -7,17 +7,30 @@ from itertools import groupby
 
 import streamlit as st
 
-from tabulaml.core.types import ModelProfile, PreprocessingConfig
+from tabulaml.core.types import ModelProfile
 from tabulaml.evaluation.metrics import default_primary_metric, scoring_map
-from tabulaml.models.registry import ENSEMBLE_KEYS, RECOMMENDED, list_models
+from tabulaml.models.registry import (
+    ENSEMBLE_KEYS,
+    FORECAST_KEYS,
+    RECOMMENDED,
+    RECOMMENDED_FORECAST,
+    list_models,
+)
 from tabulaml.training.splits import describe
-from tabulaml.training.trainer import prepare_data, train_models
+from tabulaml.training.trainer import prepare_data
 from tabulaml.ui.components import nav_buttons
 from tabulaml.ui.helpers import metric_label
-from tabulaml.ui.history import save_run
 from tabulaml.ui.model_meta import GROUP_ICONS, SPEED_CLASS, meta_for
-from tabulaml.ui.state import AppState, get_state, reset_from, set_state
+from tabulaml.ui.state import AppState, get_state, set_state
 from tabulaml.ui.steps.s4_params import settings_panel
+from tabulaml.ui.steps.s4_training import (
+    estimate_card,
+    estimate_for,
+    is_training,
+    progress_panel,
+    show_notice,
+    start_training,
+)
 
 PROFILE_BADGE = {
     ModelProfile.TREE: "tree pipeline",
@@ -28,7 +41,7 @@ MIN_BASES = 2
 
 def _init_selection(state: AppState) -> None:
     """Seed widget state once so cards never mix `value=` with session-state updates."""
-    for spec in list_models(state.problem_type):
+    for spec in list_models(state.problem_type, state.forecasting):
         st.session_state.setdefault(f"m_{spec.key}", spec.key in state.selected_models)
 
 
@@ -69,7 +82,7 @@ def _group_header(group: str, members: list, icon: str) -> None:
 
 def _model_cards(state: AppState) -> list[str]:
     _init_selection(state)
-    specs = list_models(state.problem_type)
+    specs = list_models(state.problem_type, state.forecasting)
     for group, members_iter in groupby(specs, key=lambda s: s.group):
         members = list(members_iter)
         icon = GROUP_ICONS.get(group, ":material/category:")
@@ -82,7 +95,7 @@ def _model_cards(state: AppState) -> list[str]:
 
 
 def _selection_bar(state: AppState) -> None:
-    names = {s.key: s.name for s in list_models(state.problem_type)}
+    names = {s.key: s.name for s in list_models(state.problem_type, state.forecasting)}
     chosen = [names[k] for k in names if st.session_state.get(f"m_{k}")]
     with st.container(border=True):
         left, b1, b2 = st.columns([4.6, 1.7, 1], vertical_alignment="center")
@@ -104,7 +117,11 @@ def _selection_bar(state: AppState) -> None:
 
 def _ensemble_bases(state: AppState, selected: list[str]) -> dict[str, tuple[str, ...]]:
     bases: dict[str, tuple[str, ...]] = {}
-    candidates = [s for s in list_models(state.problem_type) if s.key not in ENSEMBLE_KEYS]
+    candidates = [
+        s
+        for s in list_models(state.problem_type, state.forecasting)
+        if s.key not in ENSEMBLE_KEYS | FORECAST_KEYS
+    ]
     names = {s.key: s.name for s in candidates}
     for key in ("voting", "stacking"):
         if key not in selected:
@@ -124,8 +141,9 @@ def _ensemble_bases(state: AppState, selected: list[str]) -> dict[str, tuple[str
 
 
 def _set_recommended(state: AppState) -> None:
-    for spec in list_models(state.problem_type):
-        st.session_state[f"m_{spec.key}"] = spec.key in RECOMMENDED[state.problem_type]
+    for spec in list_models(state.problem_type, state.forecasting):
+        recommended = RECOMMENDED_FORECAST if state.forecasting else RECOMMENDED[state.problem_type]
+        st.session_state[f"m_{spec.key}"] = spec.key in recommended
 
 
 def _primary_metric(state: AppState, y) -> str:  # noqa: ANN001
@@ -140,54 +158,16 @@ def _primary_metric(state: AppState, y) -> str:  # noqa: ANN001
     )
 
 
-def _train(
-    state: AppState, selected: list[str], bases: dict, primary: str, config: PreprocessingConfig
-) -> None:
-    bar = st.progress(0.0, text="Starting...")
-
-    def progress(key: str, i: int, n: int) -> None:
-        text = (
-            "Finished"
-            if key == "done"
-            else f"Training {key} ({i + 1}/{n}): cross-validation, fit, test"
-        )
-        bar.progress(i / n, text=text)
-
-    with st.status(
-        "Training models (cross-validation + held-out test)...", expanded=False
-    ) as status:
-        run = train_models(
-            state.raw_df,
-            config,
-            selected,
-            primary_metric=primary,
-            progress=progress,
-            ensemble_bases=bases,
-        )
-        failed = [r for r in run.results if r.status != "ok"]
-        status.update(
-            label=f"Done: {len(run.results) - len(failed)} fully validated, "
-            f"{len(failed)} failed or incomplete",
-            state="complete" if not failed else "error",
-        )
-    save_run(run, state.card.title if state.card else (state.filename or "upload"))
-    reset_from(
-        5,
-        run=run,
-        selected_models=tuple(selected),
-        ensemble_bases=bases,
-        primary_metric=primary,
-        step=5,
-    )
-    st.rerun()
-
-
 def render(state: AppState) -> None:
     st.header("4. Choose models")
     st.caption(
         "Compare Random Forest with boosting, linear baselines and ensembles. Each "
         "model gets the preprocessing pipeline that suits it."
     )
+    show_notice()
+    if is_training():
+        progress_panel()
+        return
     _init_selection(state)
     _selection_bar(state)
     selected = _model_cards(state)
@@ -199,9 +179,11 @@ def render(state: AppState) -> None:
         set_state(selected_models=tuple(selected))
     ready = bool(selected) and all(len(b) >= MIN_BASES for b in bases.values())
     _summary(state, selected, tuning)
+    if selected:
+        estimate_card(estimate_for(state, selected, tuning, bases))
     if st.button("Train & Predict", type="primary", disabled=not ready, key="train"):
         config = replace(get_state().config, model_params=manual, tuning=tuning)
-        _train(get_state(), selected, bases, primary, config)
+        start_training(get_state(), selected, bases, primary, config)
     nav_buttons(back=3, next_step=5 if state.run else None)
 
 

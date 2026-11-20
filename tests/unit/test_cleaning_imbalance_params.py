@@ -115,13 +115,28 @@ def test_effective_imbalance_reports_unsupported_class_weights():
 
 
 # ------------------------------------------------------------------ P15 parameters
+def test_rf_arima_params_are_valid():
+    from tabulaml.forecasting.models import HybridRFARIMARegressor
+    from tabulaml.models.params import param_specs
+
+    names = HybridRFARIMARegressor().get_params()
+    assert all(s.name in names for s in param_specs("rf_arima"))
+
+
 def test_every_param_spec_is_valid_for_its_model():
     from tabulaml.models.registry import MODEL_REGISTRY
 
     for key, spec in MODEL_REGISTRY.items():
         for ptype in spec.tasks:
-            if key in ("voting", "stacking", "hybrid_rf_ann"):
-                continue
+            if key in (
+                "voting",
+                "stacking",
+                "hybrid_rf_ann",
+                "naive",
+                "seasonal_naive",
+                "rf_arima",
+            ):
+                continue  # built by the pipeline factory, not by the registry factory
             model = spec.factory(ptype, 0)
             for p in param_specs(key):
                 model.set_params(**{p.name: p.default})  # raises if not a real parameter

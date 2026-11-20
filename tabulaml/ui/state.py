@@ -11,6 +11,7 @@ from typing import Any
 import streamlit as st
 
 from tabulaml.core.types import (
+    ForecastConfig,
     PreprocessingConfig,
     ProblemType,
     TrainingRun,
@@ -41,6 +42,8 @@ _STEP_FIELDS = {
         "order_column",
         "decimal",
         "positive_class",
+        "extra_targets",
+        "forecast",
     ),
     3: ("clean_df", "schema", "leakage", "supported", "config", "auto", "leakage_decisions"),
     4: ("selected_models", "ensemble_bases", "primary_metric", "run"),
@@ -53,6 +56,7 @@ _STEP_FIELDS = {
 class AppState:
     step: int = 1
     problem_type: ProblemType | None = None
+    forecasting: bool = False  # step 1: forecasting = regression on past-only features
     raw_df: Any = None
     source: str | None = None
     filename: str | None = None
@@ -75,6 +79,8 @@ class AppState:
     order_column: str | None = None
     decimal: str = "."
     positive_class: str | None = None
+    extra_targets: tuple[str, ...] = ()  # several targets (multi-label / multi-output)
+    forecast: ForecastConfig | None = None  # forecasting settings (horizon, lags, ...)
     # step 3: automatic analysis (holdout-first) and the user's leakage answers
     auto: Any = None
     leakage_decisions: dict[str, bool] = field(default_factory=dict)  # col -> keep it?

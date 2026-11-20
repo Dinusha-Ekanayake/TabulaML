@@ -23,6 +23,14 @@ def _click(at: AppTest, key: str) -> AppTest:
     return at.run(timeout=TIMEOUT)
 
 
+def _train(at: AppTest) -> AppTest:
+    """Press Train & Predict, wait for the background job, then let the app pick it up."""
+    at = _click(at, "train")
+    job = at.session_state["tml_training_job"]["job"]
+    assert job.wait(TIMEOUT).state in ("done", "cancelled", "failed")
+    return at.run(timeout=TIMEOUT)
+
+
 def _answer_leaks(at: AppTest) -> AppTest:
     for radio in at.radio:
         if str(radio.key or "").startswith("leak_"):
@@ -54,7 +62,7 @@ def test_classification_flow_end_to_end():
     for key in ("m_logreg", "m_rf"):
         at.toggle(key=key).set_value(True)
     at = at.run()
-    at = _click(at, "train")
+    at = _train(at)
     _no_errors(at)
     assert at.session_state["tml_state"].step == 5
     assert at.session_state["tml_state"].run.best().status == "ok"
@@ -79,7 +87,7 @@ def test_regression_flow_on_real_dengue_data():
     at.toggle(key="m_ridge").set_value(True)
     at.toggle(key="m_rf").set_value(True)
     at = at.run()
-    at = _click(at, "train")
+    at = _train(at)
     _no_errors(at)
     run = at.session_state["tml_state"].run
     assert {r.status for r in run.results} == {"ok"}
@@ -135,3 +143,68 @@ def test_custom_mode_lets_user_choose_imputation_per_column():
     config = at.session_state["tml_state"].config
     chosen = next(c for c in config.columns if c.name == column)
     assert chosen.impute == "mean" and config.mode == "custom"
+
+
+def test_several_targets_flow():
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT).run()
+    at = _click(at, "choose_classification")
+    select = at.selectbox(key="sample_choice")
+    select.set_value(next(o for o in select.options if "Tea Auction" in o))
+    at = at.run()
+    at = _click(at, "load_sample")
+    at.toggle(key="multi_toggle").set_value(True)
+    at = at.run(timeout=TIMEOUT)
+    at.multiselect(key="extra_targets").set_value(["tier"])
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    assert at.session_state["tml_state"].extra_targets == ("tier",)
+    at = _click(at, "next_3")
+    at = _answer_leaks(at)
+    _no_errors(at)
+    config = at.session_state["tml_state"].config
+    assert config.targets == ("catalogue", "tier")
+    at = _click(at, "next_4")
+    at.toggle(key="m_dt").set_value(True)
+    at = at.run(timeout=TIMEOUT)
+    at = _train(at)
+    _no_errors(at)
+    run = at.session_state["tml_state"].run
+    assert run.is_multi_output and run.best().per_target
+    at = _click(at, "reveal_test")
+    _no_errors(at)
+    at = _click(at, "next_6")
+    at.button(key="FormSubmitter:single_record-Predict").click()
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    assert {m.label for m in at.metric} >= {"catalogue", "tier"}
+
+
+def test_forecasting_flow_on_real_dengue_data():
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT).run()
+    at = _click(at, "choose_forecasting")
+    assert at.session_state["tml_state"].forecasting
+    at = _click(at, "load_sample")
+    _no_errors(at)
+    at.number_input(key="fc_season").set_value(0)
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    state = at.session_state["tml_state"]
+    assert state.forecast is not None and state.order_column == "week_start"
+    at = _click(at, "next_3")
+    _no_errors(at)
+    assert at.session_state["tml_state"].config.forecast is not None
+    at = _click(at, "next_4")
+    for key in ("m_naive", "m_ridge", "m_rf_arima"):
+        at.toggle(key=key).set_value(True)
+    at = at.run(timeout=TIMEOUT)
+    at = _train(at)
+    _no_errors(at)
+    run = at.session_state["tml_state"].run
+    assert {r.status for r in run.results} == {"ok"}, [r.error for r in run.results]
+    at = _click(at, "reveal_test")
+    _no_errors(at)
+    at = _click(at, "next_6")
+    _no_errors(at)
+    at = _click(at, "fc_go")
+    _no_errors(at)
+    assert any(df.value.shape[0] == run.config.forecast.horizon for df in at.dataframe)

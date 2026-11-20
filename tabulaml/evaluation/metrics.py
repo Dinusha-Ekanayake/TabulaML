@@ -29,6 +29,7 @@ from sklearn.metrics import (
 )
 
 from tabulaml.core.types import LOWER_IS_BETTER, ProblemType
+from tabulaml.evaluation.multi_metrics import multi_output_metrics, multi_scoring_map
 
 BINARY_F1_IMBALANCE = 0.35
 
@@ -51,6 +52,8 @@ METRIC_LABELS = {
     "r2": "R²",
     "medae": "Median AE",
     "mape": "MAPE",
+    "subset_accuracy": "Exact match (all targets right)",
+    "hamming_loss": "Hamming loss (share of wrong values)",
 }
 
 
@@ -63,9 +66,15 @@ def minority_label(y: Any) -> int:
     return int(np.argmin(np.where(counts > 0, counts, np.iinfo(np.int64).max)))
 
 
+def _is_multi(y: Any) -> bool:
+    return np.ndim(y) == 2
+
+
 def default_primary_metric(problem_type: ProblemType, y: Any) -> str:
     if problem_type == ProblemType.REGRESSION:
         return "rmse"
+    if _is_multi(y):
+        return "f1_macro"
     counts = np.bincount(np.asarray(y, dtype=int))
     if len(counts[counts > 0]) > 2:
         return "f1_macro"
@@ -78,6 +87,8 @@ def _no_zero_targets(y: Any) -> bool:
 
 def scoring_map(problem_type: ProblemType, y: Any, positive: int | None = None) -> dict[str, Any]:
     """sklearn scorers keyed by metric name; error metrics are negated (sklearn convention)."""
+    if _is_multi(y):
+        return multi_scoring_map(problem_type)
     if problem_type == ProblemType.REGRESSION:
         scorers = {
             "mae": "neg_mean_absolute_error",
@@ -191,6 +202,8 @@ def compute_metrics(
     """Metrics for one evaluation set. The binary positive class is ``positive`` when given
     (the user's choice), otherwise the minority class of ``y_train``."""
     y_true = np.asarray(y_true)
+    if _is_multi(y_true):
+        return multi_output_metrics(problem_type, y_true, np.asarray(y_pred))
     if problem_type == ProblemType.REGRESSION:
         return {
             k: float(v)

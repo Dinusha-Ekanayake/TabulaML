@@ -1,9 +1,10 @@
-"""Robust reading of user-supplied tabular files (CSV / XLSX / XLS)."""
+"""Robust reading of user-supplied tabular files (CSV / XLSX / XLS / JSON / Parquet)."""
 
 from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import warnings
 from pathlib import Path
@@ -97,6 +98,32 @@ def _read_excel(raw: bytes, sheet: str | None) -> pd.DataFrame:
         raise DataLoadError(f"Could not read Excel file: {exc}") from exc
 
 
+def _read_json(raw: bytes) -> pd.DataFrame:
+    """Records (``[{...}, ...]``), JSON lines, or a ``{"column": [...]}`` object."""
+    text = raw.decode("utf-8-sig", errors="replace").strip()
+    try:
+        if text.startswith("["):
+            return pd.DataFrame(json.loads(text))
+        lines = text.splitlines()
+        if len(lines) > 1 and lines[0].startswith("{") and lines[0].rstrip().endswith("}"):
+            return pd.read_json(io.StringIO(text), lines=True)  # JSON lines
+        data = json.loads(text)
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            return pd.DataFrame(data["data"])  # common API style: {"data": [...]}
+        return pd.DataFrame(data)
+    except (ValueError, TypeError) as exc:
+        raise DataLoadError(
+            "Could not read JSON. Use a list of records, JSON lines, or {column: [values]}."
+        ) from exc
+
+
+def _read_parquet(raw: bytes) -> pd.DataFrame:
+    try:
+        return pd.read_parquet(io.BytesIO(raw))
+    except Exception as exc:  # noqa: BLE001 - surface any reader failure uniformly
+        raise DataLoadError(f"Could not read Parquet file: {exc}") from exc
+
+
 def _check_limits(raw: bytes, df: pd.DataFrame) -> None:
     if df.empty:
         raise DataLoadError("The file contains no rows.")
@@ -107,7 +134,7 @@ def _check_limits(raw: bytes, df: pd.DataFrame) -> None:
 
 
 def read_tabular_file(file_obj: Any, filename: str, sheet: str | None = None) -> pd.DataFrame:
-    """Read a CSV/Excel upload. Duplicate column names are made unique, not rejected."""
+    """Read an upload. Duplicate column names are made unique, not rejected."""
     raw = _to_bytes(file_obj)
     if not raw:
         raise DataLoadError("The file is empty.")
@@ -118,8 +145,14 @@ def read_tabular_file(file_obj: Any, filename: str, sheet: str | None = None) ->
         df = _read_excel(raw, sheet)
     elif suffix in (".csv", ".txt", ".tsv", ""):
         df = _read_csv(raw)
+    elif suffix in (".json", ".jsonl"):
+        df = _read_json(raw)
+    elif suffix == ".parquet":
+        df = _read_parquet(raw)
     else:
-        raise DataLoadError(f"Unsupported file type '{suffix}'. Use CSV, XLSX or XLS.")
+        raise DataLoadError(
+            f"Unsupported file type '{suffix}'. Use CSV, TXT, XLSX, XLS, JSON or Parquet."
+        )
     original = list(df.columns)
     df.columns = _dedupe_columns(original)
     if [str(c) for c in original] != list(df.columns):

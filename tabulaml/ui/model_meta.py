@@ -8,6 +8,7 @@ GROUP_ICONS = {
     "Boosting": ":material/rocket_launch:",
     "Other (SVM / KNN / ANN)": ":material/hub:",
     "Ensembles": ":material/groups:",
+    "Forecasting baselines & hybrid": ":material/timeline:",
 }
 
 # key -> (speed, best for)
@@ -33,6 +34,9 @@ MODEL_META: dict[str, tuple[str, str]] = {
     "voting": ("Slow", "Averaging diverse models"),
     "stacking": ("Slow", "Learning how to combine models"),
     "hybrid_rf_ann": ("Slow", "RF plus an ANN correcting its errors"),
+    "naive": ("Fast", "The yardstick every forecast must beat"),
+    "seasonal_naive": ("Fast", "Strong yearly / weekly patterns"),
+    "rf_arima": ("Medium", "Trend + autocorrelation with non-linear corrections"),
 }
 
 SPEED_CLASS = {"Fast": "tml-tag-fast", "Medium": "tml-tag-medium", "Slow": "tml-tag-slow"}

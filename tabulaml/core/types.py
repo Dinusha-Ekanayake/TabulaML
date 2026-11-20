@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-LOWER_IS_BETTER = frozenset({"rmse", "mae", "medae", "mape", "log_loss"})
+LOWER_IS_BETTER = frozenset({"rmse", "mae", "medae", "mape", "log_loss", "hamming_loss"})
 
 
 class ProblemType(str, Enum):
@@ -90,6 +90,26 @@ class ColumnConfig:
 
 
 @dataclass(frozen=True)
+class ForecastConfig:
+    """Forecasting = regression on features built from the PAST of the series.
+
+    Every lag is at least ``horizon`` periods back, so all inputs are known when the
+    forecast is made (direct multi-step strategy)."""
+
+    horizon: int = 1  # forecast this many periods ahead
+    n_lags: int = 3  # target lags horizon ... horizon + n_lags - 1
+    seasonal_lag: int | None = None  # e.g. 52 for weekly data (must be >= horizon)
+    windows: tuple[int, ...] = (4,)  # rolling means of the target, shifted by horizon
+    series_column: str | None = None  # several series in one file (e.g. one per store)
+    exog: str = "lagged"  # other columns: "lagged" by horizon (safe) | "none"
+
+    def lags(self) -> tuple[int, ...]:
+        regular = range(self.horizon, self.horizon + max(self.n_lags, 1))
+        extra = (self.seasonal_lag,) if self.seasonal_lag else ()
+        return tuple(sorted({*regular, *(k for k in extra if k >= self.horizon)}))
+
+
+@dataclass(frozen=True)
 class PreprocessingConfig:
     problem_type: ProblemType
     target: str
@@ -113,6 +133,18 @@ class PreprocessingConfig:
     thousands: str | None = None
     model_params: dict[str, dict[str, Any]] = field(default_factory=dict)  # manual params
     tuning: dict[str, int] = field(default_factory=dict)  # model key -> search candidates
+    max_rows: int | None = None  # keep at most this many rows (sampled before the split)
+    extra_targets: tuple[str, ...] = ()  # several targets: multi-label / multi-output
+    forecast: ForecastConfig | None = None  # time-series forecasting (regression)
+
+    @property
+    def targets(self) -> tuple[str, ...]:
+        """Every target column, the main ``target`` first."""
+        return (self.target, *self.extra_targets)
+
+    @property
+    def is_multi_output(self) -> bool:
+        return bool(self.extra_targets)
 
     def included(self) -> list[ColumnConfig]:
         return [c for c in self.columns if c.include]
@@ -154,6 +186,7 @@ class ModelResult:
     oof_proba: Any = field(default=None, repr=False, compare=False)
     oof_mask: Any = field(default=None, repr=False, compare=False)  # dev rows with an OOF value
     tuning_history: Any = field(default=None, repr=False, compare=False)
+    per_target: dict[str, dict[str, float]] = field(default_factory=dict)  # several targets
 
 
 @dataclass(frozen=True)
@@ -170,6 +203,13 @@ class TrainingRun:
     notes: tuple[str, ...] = ()
     y_dev: Any = field(default=None, repr=False, compare=False)
     positive_index: int | None = None  # encoded positive class (binary classification)
+    cancelled: bool = False  # stopped by the user; only finished models are included
+    target_labels: dict[str, tuple[str, ...]] = field(default_factory=dict)  # multi classif.
+    test_order: Any = field(default=None, repr=False, compare=False)  # forecasting: test times
+
+    @property
+    def is_multi_output(self) -> bool:
+        return self.config.is_multi_output
 
     def leaderboard(self) -> pd.DataFrame:
         """One row per model, best first by CV mean of the primary metric; failed rows last."""

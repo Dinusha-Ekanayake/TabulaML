@@ -95,6 +95,8 @@ def _categorical_steps(cfg: ColumnConfig, conf: PreprocessingConfig, scaled: boo
             lambda: SimpleImputer(strategy="constant", fill_value=MISSING_CATEGORY),
         )
     encoding = _resolve(cfg.encoding, "onehot" if scaled else "ordinal")
+    if encoding == "target" and conf.is_multi_output:  # needs ONE target to encode against
+        encoding = "onehot" if scaled else "ordinal"
     rare = conf.rare_category_min_frequency or None
     seed = conf.random_state
     # Integer regression targets (e.g. counts, days) would otherwise be read as multiclass.

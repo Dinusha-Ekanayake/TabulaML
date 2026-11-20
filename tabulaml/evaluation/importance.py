@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from sklearn.inspection import permutation_importance
 
@@ -30,17 +31,16 @@ def permutation_importance_df(
     positive: int | None = None,
 ) -> pd.DataFrame:
     """Drop in ``metric`` when each column is shuffled (bigger = more important)."""
-    X = X_test
-    y = pd.Series(y_test, index=X_test.index)
+    X, y = X_test, np.asarray(y_test)
     if len(X) > MAX_ROWS:
-        X = X.sample(MAX_ROWS, random_state=random_state)
-        y = y.loc[X.index]
+        rows = np.random.default_rng(random_state).choice(len(X), MAX_ROWS, replace=False)
+        X, y = X.iloc[rows], y[rows]
     reference = y_reference if y_reference is not None else y_test
     scorers = scoring_map(problem_type, reference, positive)
     result = permutation_importance(
         pipeline,
         X,
-        y.to_numpy(),
+        y,
         scoring=scorers[metric],
         n_repeats=n_repeats,
         random_state=random_state,

@@ -44,7 +44,7 @@ def make_input_spec(X_raw: pd.DataFrame, config: PreprocessingConfig) -> list[di
     )
     specs = []
     for col in config.included():
-        if col.name == config.target or col.name not in cleaned.columns:
+        if col.name in config.targets or col.name not in cleaned.columns:
             continue
         specs.append(_spec_for(col.name, col.feature_type, cleaned[col.name]))
     return specs
@@ -59,15 +59,21 @@ class Predictor:
         input_spec: Sequence[dict[str, Any]],
         threshold: float | None = None,
         positive_index: int | None = None,
+        target_labels: Mapping[str, Sequence[str]] | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.config = config
         self.class_labels = tuple(class_labels) if class_labels else None
         self._input_spec = list(input_spec)
-        roles = {config.target, config.group_column, config.order_column}
+        roles = {*config.targets, config.group_column, config.order_column}
         self.feature_columns = [c.name for c in config.included() if c.name not in roles]
         self.threshold = threshold  # binary only: P(positive) >= threshold -> positive
         self.positive_index = positive_index
+        self.target_labels = {k: tuple(v) for k, v in (target_labels or {}).items()}
+
+    @property
+    def targets(self) -> tuple[str, ...]:
+        return self.config.targets
 
     @property
     def is_classifier(self) -> bool:
@@ -84,7 +90,7 @@ class Predictor:
         if missing:
             msg = f"Missing required columns: {', '.join(missing)}."
             issues.append(ValidationIssue("error", "missing_columns", msg))
-        extra = [c for c in df.columns if c not in self.feature_columns and c != self.config.target]
+        extra = [c for c in df.columns if c not in self.feature_columns and c not in self.targets]
         if extra:
             msg = f"Ignoring columns the model does not use: {', '.join(map(str, extra[:10]))}."
             issues.append(ValidationIssue("warning", "extra_columns", msg))
@@ -107,6 +113,8 @@ class Predictor:
             raise ValueError(" ".join(errors))
         X = df[self.feature_columns]
         out = df.copy()
+        if self.config.is_multi_output:
+            return self._predict_multi(X, out)
         pred = np.asarray(self.pipeline.predict(X)).ravel()
         if self.is_classifier and hasattr(self.pipeline, "predict_proba"):
             proba = np.asarray(self.pipeline.predict_proba(X), dtype=float)
@@ -114,6 +122,17 @@ class Predictor:
             for i, label in enumerate(self.class_labels or range(proba.shape[1])):
                 out[f"proba_{label}"] = proba[:, i]
         out["prediction"] = self._decode(pred)
+        return out
+
+    def _predict_multi(self, X: pd.DataFrame, out: pd.DataFrame) -> pd.DataFrame:
+        """One ``prediction_<target>`` column per target (labels decoded per target)."""
+        pred = np.asarray(self.pipeline.predict(X)).reshape(len(X), -1)
+        for j, name in enumerate(self.targets):
+            values = pred[:, j]
+            labels = self.target_labels.get(name)
+            if self.is_classifier and labels:
+                values = np.asarray(labels, dtype=object)[values.astype(int)]
+            out[f"prediction_{name}"] = values
         return out
 
     def _apply_threshold(self, pred: np.ndarray, proba: np.ndarray) -> np.ndarray:
@@ -156,6 +175,11 @@ class Predictor:
     def predict_one(self, record: Mapping[str, Any]) -> dict[str, Any]:
         row = pd.DataFrame([dict(record)]).reindex(columns=self.feature_columns)
         result = self.predict_batch(row).iloc[0]
+        if self.config.is_multi_output:
+            values = {t: result[f"prediction_{t}"] for t in self.targets}
+            if not self.is_classifier:
+                values = {t: float(v) for t, v in values.items()}
+            return {"prediction": values, "probabilities": None}
         probabilities = None
         if self.is_classifier and self.class_labels:
             probabilities = {

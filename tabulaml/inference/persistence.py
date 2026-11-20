@@ -52,6 +52,7 @@ def make_bundle(
         "params": dict(result.params),
         "threshold": threshold,
         "positive_index": run.positive_index,
+        "target_labels": dict(run.target_labels),
         "versions": dict(run.versions),
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tabulaml_version": _package_version("tabulaml"),
@@ -107,6 +108,7 @@ def load_bundle(source: str | Path | bytes) -> Predictor:
         bundle["input_spec"],
         threshold=bundle.get("threshold"),
         positive_index=bundle.get("positive_index"),
+        target_labels=bundle.get("target_labels"),
     )
 
 

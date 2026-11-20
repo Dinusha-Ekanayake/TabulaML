@@ -21,6 +21,8 @@ from tabulaml.core.types import (
     ColumnConfig,
     DatasetSchema,
     FeatureType,
+    ForecastConfig,
+    ImbalanceStrategy,
     PreprocessingConfig,
     ProblemType,
     ValidationIssue,
@@ -28,7 +30,9 @@ from tabulaml.core.types import (
 )
 from tabulaml.data.profiler import profile_dataset
 from tabulaml.data.validation import check_supported, detect_leakage
-from tabulaml.preprocessing.cleaning import DataCleaner, number_format_warning
+from tabulaml.forecasting.checks import forecast_issues
+from tabulaml.forecasting.features import add_forecast_features
+from tabulaml.preprocessing.cleaning import DataCleaner, clean_target, number_format_warning
 from tabulaml.preprocessing.recommender import recommend_config
 from tabulaml.training.splits import Split, describe, make_holdout
 from tabulaml.training.trainer import prepare
@@ -49,6 +53,9 @@ class Roles:
     decimal: str = "."
     thousands: str | None = None
     positive_class: str | None = None
+    max_rows: int | None = None  # optional row cap (applied before the holdout split)
+    extra_targets: tuple[str, ...] = ()  # several targets (multi-label / multi-output)
+    forecast: ForecastConfig | None = None  # time-series forecasting (regression)
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,9 @@ def _skeleton(roles: Roles) -> PreprocessingConfig:
         positive_class=roles.positive_class,
         decimal=roles.decimal,
         thousands=roles.thousands,
+        max_rows=roles.max_rows,
+        extra_targets=roles.extra_targets,
+        forecast=roles.forecast,
     )
 
 
@@ -106,7 +116,9 @@ def _split_issues(
     """Can the dev rows support the chosen cross-validation? (re-checked on every change)"""
     k, issues = config.cv_folds, []
     y_dev = y[split.dev]
-    if config.problem_type == ProblemType.CLASSIFICATION:
+    if config.problem_type == ProblemType.CLASSIFICATION and config.is_multi_output:
+        issues.extend(_multi_class_issues(config, y_dev))
+    elif config.problem_type == ProblemType.CLASSIFICATION:
         counts = pd.Series(y_dev).value_counts()
         if counts.min() < k:
             issues.append(
@@ -138,6 +150,7 @@ def _split_issues(
                     f"Only {n_groups} groups in the training rows; {k}-fold group CV needs {k}.",
                 )
             )
+    issues.extend(_size_issues(len(split.dev), len(split.test)))
     if len(split.dev) <= k or len(split.test) == 0:
         issues.append(
             ValidationIssue(
@@ -147,6 +160,60 @@ def _split_issues(
             )
         )
     return issues
+
+
+SMALL_DEV_ROWS, TINY_TEST_ROWS = 100, 20
+
+
+def _size_issues(n_dev: int, n_test: int) -> list[ValidationIssue]:
+    """Small data gives unstable scores: say so plainly instead of hiding it."""
+    out = []
+    if n_dev < SMALL_DEV_ROWS:
+        out.append(
+            ValidationIssue(
+                "warning",
+                "small_dataset",
+                f"Only {n_dev} training rows: scores will change a lot between folds and "
+                "seeds. Prefer simple models, use more folds, and treat small differences "
+                "between models as ties.",
+            )
+        )
+    if 0 < n_test < TINY_TEST_ROWS:
+        out.append(
+            ValidationIssue(
+                "warning",
+                "tiny_test_set",
+                f"The test set has only {n_test} rows, so its score is a rough estimate. "
+                "Raise the test share or add data.",
+            )
+        )
+    return out
+
+
+def _multi_class_issues(config: PreprocessingConfig, y_dev: np.ndarray) -> list[ValidationIssue]:
+    out = []
+    for j, name in enumerate(config.targets):
+        counts = pd.Series(y_dev[:, j]).value_counts()
+        if len(counts) < 2:
+            out.append(
+                ValidationIssue(
+                    "error",
+                    "target_single_class",
+                    f"Target '{name}' has only one class in the training rows.",
+                    name,
+                )
+            )
+        elif counts.min() < config.cv_folds:
+            out.append(
+                ValidationIssue(
+                    "warning",
+                    "rare_class_multi",
+                    f"Target '{name}': a class has only {counts.min()} training rows, so some "
+                    "folds will not contain it and its scores will vary.",
+                    name,
+                )
+            )
+    return out
 
 
 def _format_issues(df: pd.DataFrame, roles: Roles) -> list[ValidationIssue]:
@@ -163,6 +230,62 @@ def _format_issues(df: pd.DataFrame, roles: Roles) -> list[ValidationIssue]:
     return out
 
 
+def _multi_target_settings(
+    config: PreprocessingConfig, roles: Roles, df: pd.DataFrame
+) -> PreprocessingConfig:
+    """Other targets are never features; imbalance handling needs a single target."""
+    for name in roles.extra_targets:
+        current = next((c for c in config.columns if c.name == name), None)
+        ftype = current.feature_type if current else FeatureType.CATEGORICAL
+        reason = "Excluded: this is one of the target columns."
+        config = config.with_column(ColumnConfig(name, ftype, include=False, reason=reason))
+    if not roles.extra_targets:
+        return config
+    transform = config.target_transform
+    if transform == "log1p":
+        lows = [clean_target(df[t], regression=True).min() for t in config.targets]
+        transform = "log1p" if min(lows) > -1 else "none"
+    note = (
+        f"Several targets ({', '.join(config.targets)}): one model copy per target. Class "
+        "weights and resampling need a single target, so they are off."
+    )
+    return replace(
+        config,
+        imbalance=ImbalanceStrategy.NONE,
+        target_transform=transform,
+        explanations=(*config.explanations, note),
+    )
+
+
+def _forecast_checks(df: pd.DataFrame, roles: Roles) -> list[ValidationIssue]:
+    if roles.forecast is None:
+        return []
+    return forecast_issues(df, roles.target, roles.order_column, roles.forecast, roles.cv_folds)
+
+
+def _forecast_columns(
+    config: PreprocessingConfig, roles: Roles, raw: pd.DataFrame
+) -> PreprocessingConfig:
+    """Same-period values of other columns are not known when forecasting: exclude them
+    (their lagged copies are used instead when 'other columns' is set to lagged)."""
+    fc = roles.forecast
+    if fc is None:
+        return config
+    keep = {fc.series_column} if fc.series_column else set()
+    skip = {*config.targets, roles.order_column}
+    used = "its lagged copy is used instead" if fc.exog == "lagged" else "other columns are off"
+    for col in config.columns:
+        if col.name in raw.columns and col.name not in skip | keep and col.include:
+            reason = f"Excluded: same-period value, not known at forecast time ({used})."
+            config = config.with_column(replace(col, include=False, reason=reason))
+    note = (
+        f"Forecasting {fc.horizon} period(s) ahead with target lags {list(fc.lags())}, "
+        f"rolling means {list(fc.windows)} and calendar parts. Every feature uses values at "
+        f"least {fc.horizon} period(s) old, so it is known when the forecast is made."
+    )
+    return replace(config, explanations=(*config.explanations, note))
+
+
 def _exclude_roles(config: PreprocessingConfig, roles: Roles) -> PreprocessingConfig:
     for name, what in ((roles.group_column, "group"), (roles.order_column, "time-order")):
         if not name:
@@ -177,6 +300,8 @@ def _exclude_roles(config: PreprocessingConfig, roles: Roles) -> PreprocessingCo
 def auto_configure(df: pd.DataFrame, roles: Roles) -> AutoResult:
     """Holdout first, then recommendations from the dev rows only (see module docstring)."""
     skeleton = _skeleton(roles)
+    raw = df
+    df = add_forecast_features(df, skeleton)  # forecasting: past-only features, else as-is
     prep = prepare(df, skeleton)
     split = make_holdout(prep.X, prep.y, skeleton, prep.extra)
     dev_rows = df.loc[prep.index[split.dev]]
@@ -184,7 +309,12 @@ def auto_configure(df: pd.DataFrame, roles: Roles) -> AutoResult:
     clean_all = cleaner.fit_transform(df)
     clean_dev = cleaner.transform(dev_rows)
     schema_dev = profile_dataset(clean_dev)
-    leakage = tuple(detect_leakage(clean_dev, roles.target, roles.problem_type))
+    others = [t for t in roles.extra_targets if t in clean_dev.columns]
+    leakage = (
+        ()  # forecast features are built from the past only, so they are known in advance
+        if roles.forecast
+        else tuple(detect_leakage(clean_dev.drop(columns=others), roles.target, roles.problem_type))
+    )
     config = recommend_config(
         schema_dev, roles.target, roles.problem_type, leakage, y=dev_rows[roles.target]
     )
@@ -199,8 +329,13 @@ def auto_configure(df: pd.DataFrame, roles: Roles) -> AutoResult:
         decimal=roles.decimal,
         thousands=roles.thousands,
         positive_class=roles.positive_class,
+        max_rows=roles.max_rows,
+        extra_targets=roles.extra_targets,
+        forecast=roles.forecast,
     )
     config = _exclude_roles(config, roles)
+    config = _multi_target_settings(config, roles, df)
+    config = _forecast_columns(config, roles, raw)
     note = (
         "Recommendations use the training (dev) rows only; the test rows are held out "
         f"before any target-based decision. {describe(config)}"
@@ -212,8 +347,8 @@ def auto_configure(df: pd.DataFrame, roles: Roles) -> AutoResult:
         schema_dev=schema_dev,
         leakage=leakage,
         supported=tuple(check_supported(clean_all, schema_all, roles.target)),
-        split_issues=tuple(_split_issues(config, prep.y, split)),
-        format_issues=tuple(_format_issues(df, roles)),
+        split_issues=tuple(_split_issues(config, prep.y, split) + _forecast_checks(raw, roles)),
+        format_issues=tuple(_format_issues(raw, roles)),
         config=config,
         n_dev=len(split.dev),
         n_test=len(split.test),

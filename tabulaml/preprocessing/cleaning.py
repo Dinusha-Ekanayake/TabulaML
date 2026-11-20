@@ -35,6 +35,9 @@ _PLAN_FOR_TYPE = {
 # \u20ac = euro, \u00a3 = pound: written as escapes so file-encoding mishaps cannot
 # corrupt the pattern. Thousands separators are removed separately (see _parse_numbers).
 _CURRENCY_NOISE = re.compile(r"(?i)rs\.?|lkr|usd|\$|\u20ac|\u00a3|%|\s")
+# An apostrophe between digit groups is a (Swiss-style) thousands mark: 1'234.5.
+# Spaces, including no-break spaces, are already removed by _CURRENCY_NOISE (\s).
+_DIGIT_GROUPING = re.compile(r"(?<=\d)['\u2019](?=\d{3}(?!\d))")
 _DECIMAL_COMMA_LIKE = re.compile(r"^-?\d{1,3},\d{1,2}$")  # "1,25": decimal or thousands?
 _CODE_LIKE = re.compile(r"^0\d+$")  # "00100": a code with meaningful leading zeros
 _BOOL_TOKENS = frozenset(TRUE_TOKENS) | frozenset(FALSE_TOKENS)
@@ -63,7 +66,8 @@ def _parse_numbers(s: pd.Series, decimal: str = ".", thousands: str | None = Non
     Unparseable values become NaN; the cleaner's parse report counts them.
     """
     as_text = s.where(s.isna(), s.astype(str))
-    text = as_text.str.replace(_CURRENCY_NOISE, "", regex=True)
+    text = as_text.str.replace(_DIGIT_GROUPING, "", regex=True)  # "1 234,5", "1'234.5"
+    text = text.str.replace(_CURRENCY_NOISE, "", regex=True)
     if decimal == ",":
         text = text.str.replace(thousands or ".", "", regex=False)
         text = text.str.replace(",", ".", regex=False)

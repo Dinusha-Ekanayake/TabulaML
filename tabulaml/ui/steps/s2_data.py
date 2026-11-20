@@ -12,6 +12,7 @@ from tabulaml.data.validation import suggest_problem_type, validate_target
 from tabulaml.preprocessing.cleaning import clean_target
 from tabulaml.ui.components import dataset_card_view, issues_view, nav_buttons
 from tabulaml.ui.state import AppState, get_state, reset_from
+from tabulaml.ui.steps.s2_forecast import forecast_section
 from tabulaml.workflow import suggest_validation
 
 PREVIEW_ROWS = 50
@@ -20,8 +21,8 @@ EXCEL = (".xlsx", ".xlsm", ".xls")
 
 def _upload_tab() -> None:
     file = st.file_uploader(
-        f"CSV or Excel file (up to {MAX_FILE_MB} MB)",
-        type=["csv", "txt", "xlsx", "xls"],
+        f"CSV, Excel, JSON or Parquet file (up to {MAX_FILE_MB} MB)",
+        type=["csv", "txt", "xlsx", "xls", "json", "jsonl", "parquet"],
         key="upload_file",
     )
     if file is None:
@@ -47,6 +48,8 @@ def _upload_tab() -> None:
 
 def _sample_tab(state: AppState) -> None:
     cards = list_samples(state.problem_type)
+    if state.forecasting:  # time series samples only
+        cards = [c for c in cards if c.validation == ValidationScheme.TIME_ORDERED.value]
     if not cards:
         st.info("No bundled sample for this problem type.")
         return
@@ -94,7 +97,46 @@ def _target_section(state: AppState) -> bool:
             icon="ℹ️",
         )
     issues_view(issues)
-    return not any(i.level == "error" for i in issues)
+    ok = not any(i.level == "error" for i in issues)
+    if state.forecasting:
+        return ok
+    return _extra_targets(get_state(), columns) and ok
+
+
+def _extra_targets(state: AppState, columns: list[str]) -> bool:
+    """Optional: predict several columns of the same kind at once (multi-output)."""
+    kind = "categories" if state.problem_type == ProblemType.CLASSIFICATION else "numbers"
+    several = st.toggle(
+        "Predict several columns at once",
+        value=bool(state.extra_targets),
+        key="multi_toggle",
+        help=f"All targets must be {kind}. One model copy is trained per target, and the "
+        "other targets are never used as inputs. With yes/no targets this is multi-label "
+        "classification.",
+    )
+    options = [c for c in columns if c != state.target]
+    chosen = (
+        st.multiselect(
+            "Additional target columns",
+            options,
+            default=[c for c in state.extra_targets if c in options],
+            key="extra_targets",
+        )
+        if several
+        else []
+    )
+    if tuple(chosen) != state.extra_targets:
+        reset_from(3, extra_targets=tuple(chosen))
+    ok = True
+    for name in chosen:
+        problems = validate_target(state.raw_df, name, state.problem_type, cv_folds=2)
+        for issue in problems:
+            if issue.level == "error":
+                st.error(f"'{name}': {issue.message}", icon="⛔")
+                ok = False
+    if several and not chosen:
+        st.caption("Choose at least one more target, or switch the option off.")
+    return ok
 
 
 def render(state: AppState) -> None:
@@ -106,7 +148,7 @@ def render(state: AppState) -> None:
         _sample_tab(state)
     ok = _target_section(state) if state.raw_df is not None else False
     if ok:
-        ok = _roles_section(get_state())
+        ok = (forecast_section if state.forecasting else _roles_section)(get_state())
     nav_buttons(back=1, next_step=3, next_enabled=ok)
 
 
@@ -127,7 +169,7 @@ def _role_select(label: str, columns: list[str], current: str | None, key: str) 
 def _roles_section(state: AppState) -> bool:
     """Column roles: how to test the model, number format and the positive class."""
     df = state.raw_df
-    columns = [str(c) for c in df.columns if str(c) != state.target]
+    columns = [str(c) for c in df.columns if str(c) not in (state.target, *state.extra_targets)]
     st.subheader("How should the model be tested?")
     if state.source == "upload" and state.validation == ValidationScheme.RANDOM:
         scheme, _, reason = suggest_validation(df, state.target)
@@ -171,7 +213,7 @@ def _roles_section(state: AppState) -> bool:
 
 
 def _positive_class(state: AppState, col) -> str | None:  # noqa: ANN001 - Streamlit column
-    if state.problem_type != ProblemType.CLASSIFICATION:
+    if state.problem_type != ProblemType.CLASSIFICATION or state.extra_targets:
         return None
     classes = clean_target(state.raw_df[state.target], regression=False).dropna()
     counts = classes.value_counts()

@@ -15,7 +15,7 @@ from sklearn.preprocessing import LabelEncoder
 
 from tabulaml.core.types import PreprocessingConfig, ProblemType, ValidationScheme
 from tabulaml.forecasting.features import add_forecast_features
-from tabulaml.preprocessing.cleaning import clean_target
+from tabulaml.preprocessing.cleaning import clean_target, normalize_missing
 from tabulaml.training.splits import order_key
 
 
@@ -86,6 +86,35 @@ def _encode_targets(
     return columns[0], per_target[config.target], {}
 
 
+def incomplete_rows(df: pd.DataFrame, config: PreprocessingConfig) -> pd.Series:
+    """True for rows with a missing value in any column except the target(s) and roles.
+
+    Judged on whole rows (like duplicates), so the row set and therefore the test split
+    do not change when columns are included or excluded."""
+    skip = {*config.targets, *_role_columns(config)}
+    columns = [c for c in df.columns if c not in skip]
+    if not columns:
+        return pd.Series(False, index=df.index)
+    return pd.DataFrame({c: normalize_missing(df[c]) for c in columns}).isna().any(axis=1)
+
+
+def _complete_rows(df: pd.DataFrame, config: PreprocessingConfig, notes: list[str]) -> pd.Series:
+    """missing_rows="drop": listwise deletion, the user's choice. Nothing is learned, so it
+    is safe before the split; missing values in new data are still imputed."""
+    if config.missing_rows != "drop" or config.forecast is not None:  # lags need every period
+        return pd.Series(True, index=df.index)
+    present = ~incomplete_rows(df, config)
+    dropped = int((~present).sum())
+    if dropped:
+        notes.append(f"Dropped {dropped} rows with a missing feature value (your choice).")
+    if not present.any():
+        raise ValueError(
+            "Every row has a missing value in some feature, so dropping them leaves nothing. "
+            "Impute instead, or exclude the mostly-empty columns first."
+        )
+    return present
+
+
 def prepare(df: pd.DataFrame, config: PreprocessingConfig) -> Prepared:
     """Select features, clean the target(s), drop missing-target rows and exact duplicates.
 
@@ -107,8 +136,12 @@ def prepare(df: pd.DataFrame, config: PreprocessingConfig) -> Prepared:
         notes.append(f"Dropped {int((~keep).sum())} rows {what}.")
     # Duplicates are judged on WHOLE rows, so the row set (and therefore the holdout split)
     # does not change when the user includes or excludes feature columns.
+    keep &= _complete_rows(df, config, notes)
     duplicated = df.loc[keep].astype(str).duplicated()
-    if duplicated.sum():
+    if not config.drop_duplicates:
+        duplicated[:] = False
+        notes.append("Exact duplicate rows were kept (your choice).")
+    elif duplicated.sum():
         notes.append(f"Dropped {int(duplicated.sum())} exact duplicate rows before splitting.")
     rows = df.loc[keep].index[~duplicated.to_numpy()]
     rows, cap_note = _cap_rows(df, rows, config)

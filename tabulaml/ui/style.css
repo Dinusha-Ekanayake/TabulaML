@@ -129,6 +129,8 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-bott
 .tml-footer a:hover, .tml-footer a:focus-visible { opacity: 1; border-bottom-style: solid; }
 .tml-footer .tml-dot { opacity: .45; margin: 0 .35rem; }
 .tml-footer .tml-ver { font-weight: 400; opacity: .7; margin-left: .35rem; }
+/* Streamlit Community Cloud places its own badges in the bottom-right corner */
+.tml-footer-cloud { padding-right: 7rem; }
 
 /* ---------- tablets ---------- */
 @media (max-width: 1024px) {
@@ -140,6 +142,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-bott
   :root { --tml-fs-title: 1.6rem; --tml-fs-section: 1.2rem; --tml-fs-group: 1.05rem; }
   .block-container { padding: 3.75rem .75rem 8.5rem !important; }
   .tml-footer { justify-content: center; text-align: center; padding: .45rem .75rem; }
+  .tml-footer-cloud { padding-right: 4.5rem; }
   .tml-footer .tml-f-mid { flex-basis: 100%; white-space: normal; }
   .tml-footer .tml-f-left, .tml-footer .tml-f-right { white-space: normal; }
   [class*="st-key-card_"], [class*="st-key-problem_"] { min-height: 0; }

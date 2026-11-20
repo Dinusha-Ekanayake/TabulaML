@@ -8,7 +8,14 @@ column types, cardinalities and missingness.
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.datasets import load_breast_cancer, load_diabetes, load_wine
+from sklearn.datasets import (
+    load_breast_cancer,
+    load_diabetes,
+    load_digits,
+    load_iris,
+    load_linnerud,
+    load_wine,
+)
 
 from tabulaml.core.types import ProblemType
 from tabulaml.data.profiler import profile_dataset
@@ -75,6 +82,8 @@ def _cases():
         ("breast_cancer", *_sklearn(load_breast_cancer, CLS)),
         ("wine_multiclass", *_sklearn(load_wine, CLS)),
         ("diabetes", *_sklearn(load_diabetes, REG)),
+        ("iris_small", *_sklearn(load_iris, CLS)),
+        ("digits_wide_10_classes", *_sklearn(load_digits, CLS)),
     ]
     for card in list_samples():
         df, card = load_sample(card.key)
@@ -98,3 +107,17 @@ def test_same_code_trains_and_predicts_on_any_dataset(name, df, target, ptype):
     spec = make_input_spec(df[list(run.feature_columns)], cfg)
     scored = Predictor(best.pipeline, cfg, run.class_labels, spec).predict_batch(df.head(25))
     assert scored["prediction"].notna().all(), name
+
+
+def test_real_multi_output_dataset_through_the_workflow():
+    """Linnerud: 3 exercise measurements predict 3 physiological targets (multi-output)."""
+    from tabulaml.workflow import Roles, auto_configure
+
+    data = load_linnerud(as_frame=True)
+    df = pd.concat([data.data, data.target], axis=1)
+    roles = Roles(target="Weight", problem_type=REG, extra_targets=("Waist", "Pulse"), cv_folds=3)
+    auto = auto_configure(df, roles)
+    assert {"small_dataset", "tiny_test_set"} <= {i.code for i in auto.split_issues}
+    run = train_models(df, auto.config, ["ridge", "rf"])
+    assert {r.status for r in run.results} == {"ok"}
+    assert set(run.best().per_target) == {"Weight", "Waist", "Pulse"}

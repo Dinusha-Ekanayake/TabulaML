@@ -10,3 +10,13 @@ def test_cloud_mode_lowers_limits(monkeypatch):
     monkeypatch.setenv("TABULAML_CLOUD", "0")
     local = importlib.reload(config)
     assert not local.CLOUD_MODE and local.MAX_CELLS == 1_000_000
+
+
+def test_package_version_matches_pyproject():
+    import tomllib
+    from pathlib import Path
+
+    import tabulaml
+
+    pyproject = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())
+    assert tabulaml.__version__ == pyproject["project"]["version"]

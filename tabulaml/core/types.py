@@ -137,6 +137,8 @@ class PreprocessingConfig:
     max_rows: int | None = None  # keep at most this many rows (sampled before the split)
     extra_targets: tuple[str, ...] = ()  # several targets: multi-label / multi-output
     forecast: ForecastConfig | None = None  # time-series forecasting (regression)
+    drop_duplicates: bool = True  # drop exact duplicate rows before the split
+    missing_rows: str = "impute"  # impute | drop (rows with any missing feature value)
 
     @property
     def targets(self) -> tuple[str, ...]:

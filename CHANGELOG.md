@@ -5,6 +5,10 @@ All notable changes to TabulaML. The format follows [Keep a Changelog](https://k
 ## [0.2.0] - 2026-11-20
 
 ### Added
+- **Rows and missing values card:** keep or drop exact duplicates, drop rows with missing values (listwise deletion) instead of imputing, and exclude columns above a missing-value limit.
+- **Grid search** next to random search. **Regularisation options:** L1 / L2 / elastic net for logistic regression, L1 + L2 + gamma for XGBoost, L1 + L2 for LightGBM, pruning for the decision tree.
+- **Random Forest dashboard**, readable leaderboard headers, and a responsive design system.
+- Generalization tests on Iris, Digits (64 features) and Linnerud (3 targets).
 - **Forecasting (time series)** as a third problem type in step 1:
   - Features are built from past values only: target lags, rolling means, calendar parts, and other columns lagged by the horizon.
   - Validation is always time-ordered.

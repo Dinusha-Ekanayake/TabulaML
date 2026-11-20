@@ -64,6 +64,11 @@ The app first **holds out the test rows**. Every target-based recommendation use
 - **Preprocessing:**
   - *Automatic*: a decision and a reason for every column.
   - *Custom*:
+    - **Rows and missing values** (card):
+      - *Drop exact duplicate rows* (on by default; the number found is shown).
+      - *Rows with missing values*: keep them and fill the gaps (recommended), or drop every row with a missing value. The card shows how many rows that is and warns when more than half would go.
+      - *Exclude columns with more missing values than X %*, then **Apply**. The default limit is 60 %, and excluded columns can be re-included in the table.
+      - Row options change which rows exist, so they re-create the held-out test set. New data at prediction time is always filled, never dropped.
     - **Missing values (imputation):** for number columns, median, mean, most frequent, constant 0 or KNN; for category columns, an own "missing" category or the most frequent category. Apply a method to all columns of a type, or set each column on its own.
     - **Global options:** missing-value indicators, merging spelling variants, grouping rare categories, the high-cardinality threshold.
     - **Class imbalance:** none, class weights, random oversampling, SMOTE or undersampling. These are off when you predict several targets.

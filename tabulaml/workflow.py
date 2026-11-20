@@ -56,6 +56,8 @@ class Roles:
     max_rows: int | None = None  # optional row cap (applied before the holdout split)
     extra_targets: tuple[str, ...] = ()  # several targets (multi-label / multi-output)
     forecast: ForecastConfig | None = None  # time-series forecasting (regression)
+    drop_duplicates: bool = True  # drop exact duplicate rows before the split
+    missing_rows: str = "impute"  # impute | drop rows with a missing feature value
 
 
 @dataclass(frozen=True)
@@ -107,6 +109,8 @@ def _skeleton(roles: Roles) -> PreprocessingConfig:
         max_rows=roles.max_rows,
         extra_targets=roles.extra_targets,
         forecast=roles.forecast,
+        drop_duplicates=roles.drop_duplicates,
+        missing_rows=roles.missing_rows,
     )
 
 
@@ -332,6 +336,8 @@ def auto_configure(df: pd.DataFrame, roles: Roles) -> AutoResult:
         max_rows=roles.max_rows,
         extra_targets=roles.extra_targets,
         forecast=roles.forecast,
+        drop_duplicates=roles.drop_duplicates,
+        missing_rows=roles.missing_rows,
     )
     config = _exclude_roles(config, roles)
     config = _multi_target_settings(config, roles, df)

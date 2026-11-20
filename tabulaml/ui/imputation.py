@@ -68,3 +68,22 @@ def with_imputation(config: PreprocessingConfig, methods: dict[str, str]) -> Pre
         if col.impute != method:
             new = new.with_column(replace(col, impute=method))
     return replace(new, mode="custom") if new != config else config
+
+
+def exclude_mostly_missing(
+    config: PreprocessingConfig, missing: dict[str, float], threshold: float
+) -> tuple[PreprocessingConfig, list[str]]:
+    """Return a NEW config excluding included feature columns with more than ``threshold``
+    missing, plus the names excluded. Targets and role columns are never touched."""
+    roles = {*config.targets, config.group_column, config.order_column}
+    names = [
+        c.name
+        for c in config.columns
+        if c.include and c.name not in roles and missing.get(c.name, 0.0) > threshold
+    ]
+    new = config
+    for name in names:
+        col = next(c for c in config.columns if c.name == name)
+        reason = f"Excluded: {missing[name]:.0%} missing (your limit is {threshold:.0%})."
+        new = new.with_column(replace(col, include=False, reason=reason))
+    return (replace(new, mode="custom") if names else config), names

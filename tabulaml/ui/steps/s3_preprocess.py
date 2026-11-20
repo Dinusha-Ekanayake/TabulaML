@@ -16,6 +16,7 @@ from tabulaml.ui.components import issues_view, nav_buttons
 from tabulaml.ui.helpers import OPTIONS, config_to_editor, editor_to_config
 from tabulaml.ui.state import AppState, get_state, reset_from, set_state
 from tabulaml.ui.steps.s3_missing import missing_values_section
+from tabulaml.ui.steps.s3_rows import row_settings, rows_card
 from tabulaml.workflow import Roles, auto_configure
 
 IMBALANCE_HELP = {
@@ -56,6 +57,7 @@ def _analyse(state: AppState) -> AppState:
     if state.config is not None and state.auto is not None:
         return state
     test, folds, seed, cap = _settings()
+    drop_dups, missing_rows = row_settings()
     roles = Roles(
         target=state.target,
         problem_type=state.problem_type,
@@ -69,6 +71,8 @@ def _analyse(state: AppState) -> AppState:
         positive_class=state.positive_class,
         max_rows=cap,
         extra_targets=state.extra_targets,
+        drop_duplicates=drop_dups,
+        missing_rows=missing_rows,
         forecast=state.forecast if state.forecasting else None,
     )
     with st.spinner("Holding out the test rows, profiling and recommending a pipeline..."):
@@ -210,6 +214,7 @@ def _preprocessing_tab(state: AppState) -> None:
         )
         return
     _global_controls(state)
+    rows_card(get_state())
     missing_values_section(get_state())
     st.markdown("##### Per-column settings")
     column_config = {

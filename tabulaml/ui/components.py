@@ -9,6 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from tabulaml.config import CLOUD_MODE
 from tabulaml.core.types import ValidationIssue
 from tabulaml.ui.history import list_runs
 from tabulaml.ui.state import STEPS, AppState, can_enter, go_to
@@ -19,12 +20,10 @@ REPO_URL = "https://github.com/Dinusha-Ekanayake/TabulaML"
 
 
 def _version() -> str:
-    try:
-        from importlib.metadata import version
+    """Package version; works on hosts that run the source without installing it."""
+    from tabulaml import __version__
 
-        return version("tabulaml")
-    except Exception:  # noqa: BLE001 - footer must never break the page
-        return "dev"
+    return __version__
 
 
 AUTHOR = "Dinusha Ekanayake"
@@ -65,7 +64,7 @@ def footer(state: AppState) -> None:
         ]
     )
     html = (
-        '<footer class="tml-footer" role="contentinfo">'
+        f'<footer class="tml-footer{" tml-footer-cloud" if CLOUD_MODE else ""}" role="contentinfo">'
         f'<div class="tml-f-left">{left}</div>'
         f'<div class="tml-f-mid">{_footer_data(state)}</div>'
         f'<div class="tml-f-right">{right}</div>'

@@ -223,3 +223,19 @@ def test_grid_search_from_the_settings_card():
     _no_errors(at)
     ridge = at.session_state["tml_state"].run.result_for("ridge")
     assert ridge.status == "ok" and len(ridge.tuning_history) == 3  # alpha: 3 values
+
+
+def test_rows_card_options_recreate_the_split():
+    at = _to_step3("regression", "dengue")
+    at.radio(key="pp_mode").set_value("Custom")
+    at = at.run(timeout=TIMEOUT)
+    before = at.session_state["tml_state"].auto.n_dev
+    at.radio(key="rs_missing_rows").set_value("drop")
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    state = at.session_state["tml_state"]
+    assert state.config.missing_rows == "drop" and state.auto.n_dev < before
+    at.toggle(key="rs_dups").set_value(False)
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    assert at.session_state["tml_state"].config.drop_duplicates is False

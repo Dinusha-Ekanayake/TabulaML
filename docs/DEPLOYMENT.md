@@ -11,9 +11,9 @@ The repository is ready to deploy as-is: `app.py` sits at the root next to the `
 | `.streamlit/secrets.toml.example` | Shows the optional `TABULAML_CLOUD = "1"` switch |
 
 ## Steps
-1. Push `main` to GitHub (already at `github.com/Dinusha-Ekanayake/TabulaML`).
+1. Push `main` to GitHub (already at `github.com/Dinusha-Ekanayake/TabulaML`). Live app: https://tabulaml.streamlit.app
 2. Sign in at **share.streamlit.io** with GitHub and click **Create app**, then **Deploy a public app from GitHub**.
-3. Choose repository `Dinusha-Ekanayake/TabulaML`, branch `main`, main file `app.py`.
+3. Choose repository `Dinusha-Ekanayake/TabulaML`, branch `main`, main file **`app.py`** (not `tabulaml/__init__.py`).
 4. Open **Advanced settings**:
    - **Python version:** 3.12.
    - **Secrets:** paste `TABULAML_CLOUD = "1"`. This enables *cloud mode*, which lowers the upload cell limit to 400k and the SVM row limit to 5k to stay inside the ~1 GB memory limit.
@@ -27,6 +27,7 @@ The repository is ready to deploy as-is: `app.py` sits at the root next to the `
 ## Limits and troubleshooting
 | Symptom | Fix |
 |---|---|
+| Blank page with only a "Fork" button | The app's **main file** must be `app.py`. Apps created with `tabulaml/__init__.py` as the main file still work, because that file starts `app.py` when run as a script. To fix the setting properly, delete the app in share.streamlit.io and redeploy it with `app.py` (the same URL can be reused) |
 | `OSError: libgomp.so.1` (LightGBM) | Make sure `packages.txt` contains `libgomp1` |
 | App restarts or "Oh no" during training | Memory limit hit: enable cloud mode, select fewer models, or use a smaller upload |
 | Upload rejected | Cloud mode allows up to 400k cells; the Streamlit upload limit is 200 MB |

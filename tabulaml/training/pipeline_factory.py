@@ -97,8 +97,6 @@ def effective_imbalance(key: str, config: PreprocessingConfig, as_base: bool = F
 def _base_estimator(model_key: str, config: PreprocessingConfig, y: Any, as_base: bool) -> Any:
     if model_key == "hybrid_rf_ann":
         model = HybridRFANNRegressor(random_state=config.random_state)
-    elif model_key == "rf_arima":
-        model = HybridRFARIMARegressor(random_state=config.random_state)
     else:
         model = get_model(model_key).factory(config.problem_type, config.random_state)
     if _wants_class_weight(config, as_base):
@@ -155,6 +153,29 @@ def _naive(key: str, config: PreprocessingConfig) -> NaiveForecaster:
     return NaiveForecaster(column=lag_name(config.target, k))
 
 
+def _rf_arima(config: PreprocessingConfig) -> HybridRFARIMARegressor:
+    """ARIMA on the target + Random Forest (full feature pipeline) on ARIMA's residuals."""
+    manual = validate_params("rf_arima", config.model_params.get("rf_arima", {}))
+    order = {k: int(manual[k]) for k in ("p", "d", "q") if k in manual}
+    forest = get_model("rf").factory(ProblemType.REGRESSION, config.random_state)
+    if "n_estimators" in manual:
+        forest.set_params(n_estimators=int(manual["n_estimators"]))
+    residual = Pipeline(
+        [
+            ("cleaner", make_cleaner(config)),
+            ("features", build_feature_transformer(config, get_model("rf").profile)),
+            ("model", forest),
+        ]
+    )
+    fc = config.forecast
+    return HybridRFARIMARegressor(
+        lag_column=lag_name(config.target, fc.horizon),
+        horizon=fc.horizon,
+        residual_model=residual,
+        **order,
+    )
+
+
 def make_cleaner(config: PreprocessingConfig) -> DataCleaner:
     """Cleaner that honours the user's column types and number format."""
     types = {c.name: c.feature_type for c in config.columns if c.include}
@@ -184,6 +205,8 @@ def build_model_pipeline(
         _check_forecast_model(model_key, config)
     if model_key in ("naive", "seasonal_naive"):
         return _naive(model_key, config)  # predicts on the original scale: never wrapped
+    if model_key == "rf_arima":
+        return _rf_arima(config)  # needs the raw target lags: never target-transformed
     if model_key == "voting":
         ensemble = _multi(build_voting(base_keys, config, y), config, as_base)
         return _wrap_target(ensemble, config, as_base)

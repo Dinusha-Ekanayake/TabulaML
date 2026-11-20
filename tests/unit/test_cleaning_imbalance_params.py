@@ -115,12 +115,28 @@ def test_effective_imbalance_reports_unsupported_class_weights():
 
 
 # ------------------------------------------------------------------ P15 parameters
-def test_rf_arima_params_are_valid():
-    from tabulaml.forecasting.models import HybridRFARIMARegressor
-    from tabulaml.models.params import param_specs
+def test_rf_arima_manual_params_reach_arima_and_forest():
+    from tabulaml.core.types import (
+        ColumnConfig,
+        FeatureType,
+        ForecastConfig,
+        PreprocessingConfig,
+        ProblemType,
+    )
+    from tabulaml.training.pipeline_factory import build_model_pipeline
 
-    names = HybridRFARIMARegressor().get_params()
-    assert all(s.name in names for s in param_specs("rf_arima"))
+    cfg = PreprocessingConfig(
+        ProblemType.REGRESSION,
+        "y",
+        "auto",
+        (ColumnConfig("y__lag2", FeatureType.NUMERIC),),
+        forecast=ForecastConfig(horizon=2),
+        model_params={"rf_arima": {"p": 2, "d": 0, "q": 1, "n_estimators": 60}},
+    )
+    hybrid = build_model_pipeline("rf_arima", cfg)
+    assert (hybrid.p, hybrid.d, hybrid.q) == (2, 0, 1)
+    assert hybrid.lag_column == "y__lag2" and hybrid.horizon == 2
+    assert hybrid.residual_model.named_steps["model"].n_estimators == 60
 
 
 def test_every_param_spec_is_valid_for_its_model():

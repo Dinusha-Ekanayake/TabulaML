@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.base import BaseEstimator, RegressorMixin, clone
 from sklearn.ensemble import RandomForestRegressor
 
 
@@ -42,19 +42,30 @@ class NaiveForecaster(RegressorMixin, BaseEstimator):
 
 
 class HybridRFARIMARegressor(RegressorMixin, BaseEstimator):
-    """ARIMA(p, d, q) for the time pattern + Random Forest on ARIMA's residuals."""
+    """ARIMA(p, d, q) for the time pattern + a Random Forest pipeline on ARIMA's residuals.
+
+    Fair to the other models: when predicting period t with horizon h, ARIMA only knows
+    the series up to t - h. Those values come from the ``lag_column`` (the target h periods
+    back), and the fitted ARIMA is updated with them without refitting its parameters.
+    ``X`` is the raw feature table in time order, right after the training periods.
+    """
 
     def __init__(
         self,
+        lag_column: str = "",
+        horizon: int = 1,
+        residual_model: Any = None,
         p: int = 1,
         d: int = 1,
         q: int = 1,
-        n_estimators: int = 200,
-        max_depth: int | None = None,
-        random_state: int = 42,
     ) -> None:
+        self.lag_column, self.horizon, self.residual_model = lag_column, horizon, residual_model
         self.p, self.d, self.q = p, d, q
-        self.n_estimators, self.max_depth, self.random_state = n_estimators, max_depth, random_state
+
+    def _residual_model(self) -> Any:
+        if self.residual_model is not None:
+            return clone(self.residual_model)
+        return RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1)
 
     def fit(self, X: Any, y: Any) -> HybridRFARIMARegressor:
         from statsmodels.tsa.arima.model import ARIMA  # imported lazily: optional at startup
@@ -67,17 +78,23 @@ class HybridRFARIMARegressor(RegressorMixin, BaseEstimator):
             self.arima_ = ARIMA(y, order=(self.p, self.d, self.q)).fit()
         fitted = np.asarray(self.arima_.fittedvalues, dtype=float)
         fitted[: self.d] = y[: self.d]  # differencing has no fitted value for the first rows
-        self.forest_ = RandomForestRegressor(
-            n_estimators=self.n_estimators,
-            max_depth=self.max_depth,
-            random_state=self.random_state,
-            n_jobs=-1,
-        ).fit(X, y - fitted)
+        self.forest_ = self._residual_model().fit(X, y - fitted)
         return self
 
-    def predict(self, X: Any) -> np.ndarray:
-        n = len(X)
+    def _arima_part(self, X: Any) -> np.ndarray:
+        """h-step ARIMA forecasts, each from the values known h periods before the row."""
+        h, n = max(int(self.horizon), 1), len(X)
+        known = pd.to_numeric(pd.DataFrame(X)[self.lag_column], errors="coerce").to_numpy()
+        results, used, out = self.arima_, 0, np.empty(n)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            base = np.asarray(self.arima_.forecast(steps=n), dtype=float)
-        return base + self.forest_.predict(X)
+            for j in range(n):
+                new = max(0, j + 1 - h)  # actual values after training known for row j
+                if new > used:
+                    results = results.append(known[h + used : h + new], refit=False)
+                    used = new
+                out[j] = np.asarray(results.forecast(steps=j + 1 - used))[-1]
+        return out
+
+    def predict(self, X: Any) -> np.ndarray:
+        return self._arima_part(X) + np.asarray(self.forest_.predict(X), dtype=float)

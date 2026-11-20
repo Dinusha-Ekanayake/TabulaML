@@ -122,6 +122,26 @@ Settings: 5-fold cross-validation on the training rows with each dataset's valid
 | Same, but `category` kept | **1.000** | **1.000** (invalid: the column already encodes the answer) |
 | Random split that ignores the weekly-sale groups | 0.809 | 0.821 |
 
+### 8.1 Forecasting and the RF + ARIMA hybrid (Colombo dengue)
+Setup:
+- Forecasting mode with a horizon of 1 and of 4 weeks.
+- Features: target lags h … h+3, seasonal lag 52, a 4-week rolling mean, calendar parts, and weather lagged by h.
+- Time-ordered 5-fold CV on the training weeks; the test set is the latest 20 % of weeks.
+- Every model, including ARIMA inside the hybrid, only uses values known h weeks earlier.
+
+Reproduce with `python scripts/forecast_benchmark.py`; full table in `reports/forecast_summary.md`.
+
+| Model | h = 1: CV RMSE | h = 1: test RMSE | h = 4: CV RMSE | h = 4: test RMSE |
+|---|---|---|---|---|
+| Naive (last known value) | 62.6 | 62.1 | 85.8 | 79.0 |
+| Seasonal naive (52 weeks) | 90.1 | 98.7 | 92.5 | 99.1 |
+| Ridge | 72.9 | 83.9 | 94.4 | 92.9 |
+| Random Forest | 63.6 | 67.3 | 76.2 | 83.7 |
+| XGBoost | 68.6 | 71.5 | **74.1** | 80.5 |
+| **Hybrid RF + ARIMA** | **61.6** | **60.4** | 74.7 | **72.8** |
+
+The naive forecast is hard to beat for weekly dengue counts, because next week is usually close to this week. Random Forest and XGBoost alone did *not* beat it on the test weeks. The hybrid did beat it, by 2.8 % at one week and 7.8 % at four weeks: ARIMA captures the series' own momentum, and the forest corrects it with weather and seasonality. A first version of the hybrid forecast every test week from the end of the training data (up to a year ahead), which made it look poor (test RMSE 93.8). Giving ARIMA the same information as the other models, values up to h weeks back, fixed this. It shows that a fair comparison needs the *same information* for every model, not only the same split.
+
 ## 9. Discussion
 **Random Forest vs gradient boosting.** There was no single winner. On the two real Sri Lankan regression tasks, Random Forest gave the best held-out test RMSE: dengue 65.2 cases per week, tea price 102.3 LKR. In cross-validation it beat XGBoost and LightGBM on the small, noisy dengue series. Boosters edged ahead in a few comparisons, but by small margins (0.002 F1 on the tea catalogue, 0.004 AUC on breast cancer). With default settings, Random Forest is a very strong and low-maintenance choice for tabular data; boosting can win slightly, especially after tuning.
 

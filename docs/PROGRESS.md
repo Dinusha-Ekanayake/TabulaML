@@ -1,23 +1,23 @@
 # Progress
 
-| Phase | Title | Model | Status | Notes |
-|---|---|---|---|---|
-| 0 | Scaffold & environment | Sonnet | done | venv at .venv, sklearn 1.5.2, ruff clean, Graphify graph built |
-| 1 | Core types, loader, sample datasets | Sonnet | done | synthetic samples built here were later removed (public data only) |
-| 2 | Cleaning, profiling, validation | Sonnet + Opus review | done, reviewed | Opus review fixed 8 defects (see below) |
-| 3 | Preprocessing engine | Opus | done | leakage spy test; 6 datasets x 2 profiles generalisation test |
-| - | Public Sri Lankan datasets | Opus | done | colmozzie dengue bundled (CC0); Kaggle telco builder (needs Kaggle login) |
-| 4 | Model registry, ensembles, hybrid | Opus | done | R1 gate passed on sklearn 1.5.2; pipeline_factory done early |
-| 5 | Training & evaluation engine | Opus | done | 171 tests, 96% coverage; real dengue data trains (RF R2 > 0.3) |
-| 6 | Inference & persistence | Opus | done | Predictor + joblib bundles; save_bundle takes input_spec instead of schema |
-| 7 | UI steps 1-3 | Opus | done | frozen AppState; editor <-> config helpers tested |
-| 8 | UI steps 4-6 | Opus | done | AppTest drives full wizard (classification + real dengue regression) |
-| 9 | Generalization proof & benchmark | Opus | done | 12 datasets incl. 6 random chaos frames; repeated-CV benchmark + Wilcoxon + ablation |
-| 10 | Docs, report, polish | Opus | done | README, USER_GUIDE, REPORT with benchmark results; 198 tests, 96% coverage |
+| Phase | Title | Status | Notes |
+|---|---|---|---|
+| 0 | Scaffold & environment | done | venv at .venv, sklearn 1.5.2, ruff clean, Graphify graph built |
+| 1 | Core types, loader, sample datasets | done | synthetic samples built here were later removed (public data only) |
+| 2 | Cleaning, profiling, validation | done, reviewed | Review fixed 8 defects (see below) |
+| 3 | Preprocessing engine | done | leakage spy test; 6 datasets x 2 profiles generalisation test |
+| - | Public Sri Lankan datasets | done | colmozzie dengue bundled (CC0); Kaggle telco builder (needs Kaggle login) |
+| 4 | Model registry, ensembles, hybrid | done | R1 gate passed on sklearn 1.5.2; pipeline_factory done early |
+| 5 | Training & evaluation engine | done | 171 tests, 96% coverage; real dengue data trains (RF R2 > 0.3) |
+| 6 | Inference & persistence | done | Predictor + joblib bundles; save_bundle takes input_spec instead of schema |
+| 7 | UI steps 1-3 | done | frozen AppState; editor <-> config helpers tested |
+| 8 | UI steps 4-6 | done | AppTest drives full wizard (classification + real dengue regression) |
+| 9 | Generalization proof & benchmark | done | 12 datasets incl. 6 random chaos frames; repeated-CV benchmark + Wilcoxon + ablation |
+| 10 | Docs, report, polish | done | README, USER_GUIDE, REPORT with benchmark results; 198 tests, 96% coverage |
 
 ## Datasets (public only; synthetic samples removed at the user's request)
 | Key | Source | Task | Licence | Status |
-|---|---|---|---|---|
+|---|---|---|---|
 | `lk_tea_auction_catalogue` | Colombo Tea Auction (HF colombo-tea-auction-prices/cta-price-prediction) | Classification, 4 classes | CC BY 4.0 | bundled |
 | `lk_tea_auction_price` | same file | Regression | CC BY 4.0 | bundled |
 | `lk_colombo_dengue` | colmozzie (Epidemiology Unit weekly reports) | Regression | CC0 | bundled |
@@ -43,7 +43,7 @@
 - [ ] Fetch the real telco dataset (needs a free Kaggle account): set `KAGGLE_USERNAME`/`KAGGLE_KEY` or download the zip and pass `--kaggle-dir`.
 
 ## Review log
-- **Opus review of Phases 1-2** (regression tests in `tests/unit/test_review_regressions.py`):
+- **Review of Phases 1-2** (regression tests in `tests/unit/test_review_regressions.py`):
   1. Loader: CSV rows wider than the header were shifted into the index (every column misaligned) -> now a `DataLoadError`.
   2. Loader: blank header cells became `"nan"` -> `"unnamed"`.
   3. Cleaner: numeric columns turned `"1,200"` / text numbers into NaN at prediction time -> shared numeric parser.

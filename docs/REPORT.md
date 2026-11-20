@@ -139,7 +139,7 @@ Settings: 5-fold cross-validation on the training rows with each dataset's valid
 `pip install -r requirements-dev.txt && pip install -e .`, then `pytest` (234 tests, about 95 % coverage; includes headless runs of the whole app), then `python scripts/benchmark.py`. The public data can be rebuilt with `python scripts/fetch_public_datasets.py public`. Versions are pinned in `requirements.txt` and recorded in every run report. Deployment instructions are in `docs/DEPLOYMENT.md`.
 
 ## 12. AI-assistance disclosure
-Parts of the design, code, tests and documentation were produced with the help of an AI coding assistant (Claude Code), under the author's direction, and reviewed. *Edit this section to match your course's disclosure requirements.*
+Parts of the design, code, tests and documentation were produced with the help of an AI coding assistant, under the author's direction, and reviewed. *Edit this section to match your course's disclosure requirements.*
 
 ## References
 - Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5-32.

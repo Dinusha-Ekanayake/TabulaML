@@ -1,14 +1,14 @@
-# TabulaML — Implementation Plan (Sonnet-executable)
+# TabulaML — Implementation Plan
 
-## How to use this plan (token-efficient workflow)
+## How to use this plan
 
-1. Run **one phase per Claude Code session** with Sonnet (`/model sonnet`). Use `/clear` between phases.
-2. Start each session by pasting that phase's **Prompt** block. Sonnet should read only `CLAUDE.md`, `docs/02_ARCHITECTURE.md §4` (the contracts) and the phase section, plus the specific files the phase names. It should not explore the whole repository.
-3. A phase is **done** when its acceptance commands pass. Tick it in `docs/PROGRESS.md` and commit with the message given.
-4. Phases marked **⚑ Opus review** are high risk. After Sonnet finishes, run one review pass with Opus (`/model opus`, prompt: "Review Phase N diff against docs/03_IMPLEMENTATION_PLAN.md Phase N and docs/02_ARCHITECTURE.md; fix CRITICAL/HIGH issues only.").
+1. Implement one phase at a time, in order. Read only `docs/02_ARCHITECTURE.md §4` (the contracts), the phase section and the files the phase names.
+2. A phase is **done** when its acceptance commands pass. Tick it in `docs/PROGRESS.md` and commit with the message given.
+3. Phases marked **⚑** are high risk and get an extra review pass against this plan and `02_ARCHITECTURE.md` before they are ticked.
+4. Tests come first in every phase.
 5. If a phase contradicts the contracts in `02_ARCHITECTURE.md §4`, the contracts win. If a contract has to change, update §4 in the same commit.
 
-Dependencies: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10. Phases 1 and 4 can run in parallel after Phase 2 is done only if two sessions are used. Otherwise, keep the order.
+Dependencies: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10. Phases 1 and 4 are independent after Phase 2; otherwise keep the order.
 
 ---
 
@@ -53,7 +53,6 @@ graphify update .
 **Commit:** `chore: scaffold TabulaML package, tooling and environment`
 
 **Prompt:**
-> Implement Phase 0 of docs/03_IMPLEMENTATION_PLAN.md exactly. Read CLAUDE.md and that phase only. Create the files listed, run the acceptance commands, fix any failures, update docs/PROGRESS.md, then show me the commit message (do not commit unless I say so).
 
 ---
 
@@ -78,11 +77,10 @@ graphify update .
 **Commit:** `feat: core types, robust file loader and Sri Lankan-context sample datasets`
 
 **Prompt:**
-> Implement Phase 1 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §4, and Phase 1 only. Follow the contracts exactly. Write the tests first, then the code. Run acceptance, update docs/PROGRESS.md, and give me the commit message.
 
 ---
 
-## Phase 2 — Cleaning, profiling, validation  ⚑ Opus review
+## Phase 2 — Cleaning, profiling, validation  ⚑
 
 **Goal:** any raw frame becomes a cleaned frame, a `DatasetSchema` and a list of `ValidationIssue`s.
 
@@ -119,11 +117,10 @@ graphify update .
 **Commit:** `feat: generic data cleaner, schema profiler and target/leakage validation`
 
 **Prompt:**
-> Implement Phase 2 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §4–5 and Phase 2 only; read tabulaml/core/types.py and tabulaml/config.py for contracts. Tests first. Never mutate input DataFrames. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
-## Phase 3 — Preprocessing engine (recommender + builder)  ⚑ Opus review
+## Phase 3 — Preprocessing engine (recommender + builder)  ⚑
 
 **Goal:** `PreprocessingConfig` plus a `ModelProfile` produce a leakage-safe `ColumnTransformer`. This is the most heavily graded part.
 
@@ -158,7 +155,6 @@ graphify update .
 **Commit:** `feat: schema-driven preprocessing recommender and model-aware pipeline builder`
 
 **Prompt:**
-> Implement Phase 3 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §4–5, Phase 3, and only the files tabulaml/core/types.py, tabulaml/config.py, tabulaml/preprocessing/cleaning.py, tabulaml/data/profiler.py. Tests first, including the leakage spy test. No dataset-specific code anywhere. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
@@ -203,11 +199,10 @@ graphify update .
 **Commit:** `feat: model registry with bagging, boosting, voting, stacking and RF+ANN hybrid`
 
 **Prompt:**
-> Implement Phase 4 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §4, Phase 4, and tabulaml/core/types.py. If the stacking/clone test fails with __sklearn_tags__ errors, keep scikit-learn <1.6 and report. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
-## Phase 5 — Training & evaluation engine  ⚑ Opus review
+## Phase 5 — Training & evaluation engine  ⚑
 
 **`training/pipeline_factory.py` — `build_model_pipeline(model_key, config, y=None)`:**
 - Builds `imblearn.Pipeline([("cleaner", DataCleaner(...)), ("features", build_feature_transformer(config, spec.profile)), ("sampler", ...optional), ("model", estimator)])`.
@@ -241,7 +236,6 @@ graphify update .
 **Commit:** `feat: leakage-safe training engine, metrics, importance and plots`
 
 **Prompt:**
-> Implement Phase 5 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §2.1 and §4, Phase 5, then only the public signatures (not bodies) of tabulaml/preprocessing/builder.py, tabulaml/models/registry.py, tabulaml/models/ensembles.py. Tests first. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
@@ -264,7 +258,6 @@ graphify update .
 **Commit:** `feat: predictor with input validation and model bundle persistence`
 
 **Prompt:**
-> Implement Phase 6 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §4, Phase 6, and tabulaml/core/types.py. Tests first. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
@@ -297,7 +290,6 @@ graphify update .
 **Commit:** `feat: UI for problem type, data source and preprocessing configuration`
 
 **Prompt:**
-> Implement Phase 7 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §6 and §4.2, Phase 7. Do not read implementation bodies of tabulaml/ modules—use the signatures in §4.2. UI must contain no ML logic. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
@@ -327,7 +319,6 @@ graphify update .
 **Commit:** `feat: model dashboard, results comparison and prediction UI`
 
 **Prompt:**
-> Implement Phase 8 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §4.2 and §6, Phase 8, and tabulaml/ui/state.py + tabulaml/ui/components.py. Use signatures, not bodies, of core modules. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
@@ -345,7 +336,6 @@ graphify update .
 **Commit:** `test: generalization suite and RF vs gradient boosting benchmark`
 
 **Prompt:**
-> Implement Phase 9 of docs/03_IMPLEMENTATION_PLAN.md. Read CLAUDE.md, Phase 9, and the signatures in docs/02_ARCHITECTURE.md §4.2. Run acceptance, update PROGRESS.md, give commit message.
 
 ---
 
@@ -353,7 +343,7 @@ graphify update .
 
 - `README.md`: overview, a screenshot of each step, installation, running, testing, the project structure and the dataset provenance statement.
 - `docs/USER_GUIDE.md`: a walkthrough of each screen.
-- `docs/REPORT.md`, the assignment report: problem definition, objectives, related work (RF and bagging, gradient boosting, CatBoost's ordered boosting, stacking), data (the cards, and that the data is synthetic), preprocessing design (rules table and leakage safety argument), system architecture (diagrams from 02), experiments (benchmark tables and figures), discussion (RF vs boosting; strengths and limitations on tabular vs image/text data; hybrids), limitations, future work (RF+ARIMA, SHAP, tuning, real local data), and an AI-use disclosure if the course requires one.
+- `docs/REPORT.md`, the assignment report: problem definition, objectives, related work (RF and bagging, gradient boosting, CatBoost's ordered boosting, stacking), data (the cards, and that the data is synthetic), preprocessing design (rules table and leakage safety argument), system architecture (diagrams from 02), experiments (benchmark tables and figures), discussion (RF vs boosting; strengths and limitations on tabular vs image/text data; hybrids), limitations, future work (RF+ARIMA, SHAP, tuning, real local data).
 - Polish: run `ruff format`, check coverage is at least 80 %, make sure no function is over 50 lines (`ruff` rule `PLR0915` or manual), and that no `print` statements remain.
 - Run the `code-reviewer` and `python-reviewer` agents once on the whole repository, and fix CRITICAL and HIGH issues.
 

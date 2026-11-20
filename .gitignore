@@ -10,8 +10,3 @@ htmlcov/
 graphify-out/
 *.joblib
 .streamlit/secrets.toml
-# AI-assistant instruction / session files (kept locally, never committed)
-CLAUDE.md
-CLAUDE.local.md
-.claude/
-AGENTS.md

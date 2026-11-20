@@ -3,7 +3,7 @@
 Status: phases Q1, Q2 and P11-P19 are implemented (see docs/PROGRESS.md); P20 is optional. Written at commit `e141791`: 6-step app, 18 models plus voting/stacking/hybrid, public Sri Lankan data only, 201 passing tests. This plan covers:
 - an assessment of the external review;
 - extra defects found in a full self-review;
-- a phased plan written for Sonnet, one phase per session, in the same style as `03_IMPLEMENTATION_PLAN.md`.
+- a phased plan in the same style as `03_IMPLEMENTATION_PLAN.md`.
 
 ---
 
@@ -47,7 +47,7 @@ The review was of commit `ac983df`, which still had the synthetic samples. Every
 
 ## C. Improvement plan
 
-Order is by value for the viva and correctness. Every phase is self-contained, tests come first, and the gate after each phase is `ruff check`, `pytest -q --cov=tabulaml` (≥ 80 %), then commit. **⚑** marks phases that get an Opus review afterwards.
+Order is by value for the viva and correctness. Every phase is self-contained, tests come first, and the gate after each phase is `ruff check`, `pytest -q --cov=tabulaml` (≥ 80 %), then commit. **⚑** marks phases that get an extra review afterwards.
 
 ### Must be kept in every phase (explainability, as asked by the user)
 No phase may remove or weaken the existing explanations. New features must explain themselves the same way. The features to keep:
@@ -75,7 +75,7 @@ A persistent footer on every step, rendered by `components.footer(state)` and ca
 Styling:
 - small muted text, a thin top border, three columns that wrap to one column on narrow screens;
 - theme tokens, readable in light and dark mode;
-- no AI or tool attribution in the footer.
+- no tool attribution in the footer.
 
 An AppTest asserts that the footer renders on every step, and that the dataset attribution appears after a sample loads. Effort: S.
 
@@ -143,7 +143,6 @@ Effort: S-M.
   - Grouped and time-ordered split tests pass.
   - An incomplete-CV model is never chosen as best.
 
-> Prompt: "Implement P11 of docs/04_IMPROVEMENT_PLAN.md. Read CLAUDE.md, docs/02_ARCHITECTURE.md §4 and P11 only. Tests first. Update the contract changes log in docs/PROGRESS.md."
 
 ### P12 - Cleaner honours user types and locale; parse report ⚑
 **Fixes:** review #3; F1, F5.

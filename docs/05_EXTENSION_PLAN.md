@@ -107,4 +107,4 @@ This plan answers the "known limits" review. Each phase is implemented test-firs
 ## Definition of done
 - Every phase has unit and UI tests. Coverage ≥ 80 % (currently about 95 %). `ruff` is clean. Files stay under 400 lines and functions under 50.
 - No dataset-specific code in `tabulaml/`. No synthetic sample datasets.
-- One conventional commit per phase, with no AI attribution.
+- One conventional commit per phase.

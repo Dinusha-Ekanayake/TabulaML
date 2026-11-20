@@ -73,7 +73,11 @@ Tests prove that no test row reaches any fitted step, that group and time splits
 The same unchanged code trains and predicts on 12 different datasets in the test suite, including six randomly generated tables with random column types and missing values.
 
 ## 7. Models and hyperparameters
-The models are Linear and Logistic Regression, Ridge, Lasso, Elastic Net, Decision Tree, Random Forest, Extra Trees, Bagging, AdaBoost, Gradient Boosting, Histogram GB, XGBoost, LightGBM, CatBoost, SVM, KNN and MLP (ANN), plus Voting, Stacking and the **RF + ANN hybrid**. In the hybrid, a neural network learns the Random Forest's out-of-fold errors and adds a correction.
+The models are Linear and Logistic Regression, Ridge, Lasso, Elastic Net, Decision Tree, Random Forest, Extra Trees, Bagging, AdaBoost, Gradient Boosting, Histogram GB, XGBoost, LightGBM, CatBoost, SVM, KNN and MLP (ANN), plus Voting, Stacking and two hybrids:
+- **RF + ANN** (tabular regression): a neural network learns the Random Forest's out-of-fold errors and adds a correction.
+- **RF + ARIMA** (forecasting): ARIMA(p, d, q) models the series' own time pattern (trend and autocorrelation). A Random Forest then learns ARIMA's residuals from the lag, rolling-mean, calendar and lagged weather features. The forecast is ARIMA's forecast plus the forest's correction.
+
+Forecasting mode also has two baselines that every model must beat: **naive** (the last known value) and **seasonal naive** (the value one season ago).
 
 Each model lists its main hyperparameters with a short explanation, such as number of trees, depth, learning rate, leaves or regularisation. There are three modes:
 - **Default:** sensible library defaults.
@@ -127,13 +131,14 @@ Settings: 5-fold cross-validation on the training rows with each dataset's valid
 
 **Tabular vs image/text data.** Tree ensembles fit tabular data well: they handle mixed types, missing values and interactions with little preparation and train quickly on a CPU. In images, audio and text, the information sits in local structure (neighbouring pixels, word order) that trees on raw features cannot use well, so neural networks dominate there. TabulaML is therefore limited to tabular data.
 
-**Hybridisation.** The RF + ANN hybrid is available for regression. An RF + ARIMA hybrid for forecasting is left as future work.
+**Hybridisation.** Both hybrids from the brief are implemented. RF + ANN is available for tabular regression. RF + ARIMA is available in forecasting mode, together with the naive baselines that show whether any model has learned more than "same as last week" (see §8.1).
 
 ## 10. Limitations and future work
 - The telco data needs a Kaggle login, so it was not part of this benchmark run. Fetch it with `scripts/fetch_public_datasets.py telco`.
 - Tea and dengue are aggregate market and surveillance data, not individual patient records.
 - Only default hyperparameters were benchmarked. Auto-tuning is available in the app, but it was not used here, to keep the comparison simple and equal.
-- Possible next steps: an explicit one-week-ahead dengue forecast task, SHAP explanations, background training with cancel, and an HTML report export.
+- The RF + ARIMA hybrid supports one series at a time and a fixed, user-set ARIMA order. Seasonal ARIMA and automatic order selection are left out to stay within the course scope.
+- Possible next steps: SHAP explanations and an HTML report export.
 
 ## 11. Reproducibility
 `pip install -r requirements-dev.txt && pip install -e .`, then `pytest` (234 tests, about 95 % coverage; includes headless runs of the whole app), then `python scripts/benchmark.py`. The public data can be rebuilt with `python scripts/fetch_public_datasets.py public`. Versions are pinned in `requirements.txt` and recorded in every run report. Deployment instructions are in `docs/DEPLOYMENT.md`.

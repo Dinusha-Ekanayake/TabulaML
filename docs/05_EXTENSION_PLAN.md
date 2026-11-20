@@ -104,6 +104,17 @@ This plan answers the "known limits" review. Each phase is implemented test-firs
   - free-text columns: a note that they are reduced to simple text statistics.
 - Docs: `USER_GUIDE.md` (new options), `README.md` "Capabilities and limits", `02_ARCHITECTURE.md §4` (contract changes), `PROGRESS.md`.
 
+## E5 · RF dashboard, card design, responsive layout, end-to-end checks
+- The lecture asks for an **RF dashboard**, an **RF vs XGBoost comparison** on local data, and **hybridization** (RF + ARIMA for time series, RF + ANN for tabular regression):
+  - Step 5 gets a **Random Forest dashboard** tab: KPI cards (CV score, spread, trees, average depth, fit time), a fold-by-fold chart against the boosters, a head-to-head table (RF wins, losses and ties on identical folds), and the forest's built-in importance.
+  - RF + ANN already exists. RF + ARIMA is added in E3.
+- Consistent dashboard cards: the problem types, model cards, estimate card, training card and KPI cards share one style (radius, border, hover, selected state) in light and dark mode.
+- Responsive: columns stack on narrow screens, cards drop their fixed minimum heights, the footer wraps, and nothing scrolls sideways at 390 px.
+- Playwright walk-through:
+  - every problem type end to end (classification, several targets, regression, forecasting);
+  - desktop and phone widths, light and dark;
+  - no exceptions, no error boxes and no horizontal overflow.
+
 ## Definition of done
 - Every phase has unit and UI tests. Coverage ≥ 80 % (currently about 95 %). `ruff` is clean. Files stay under 400 lines and functions under 50.
 - No dataset-specific code in `tabulaml/`. No synthetic sample datasets.

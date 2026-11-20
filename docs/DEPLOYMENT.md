@@ -30,6 +30,8 @@ The repository is ready to deploy as-is: `app.py` sits at the root next to the `
 | `OSError: libgomp.so.1` (LightGBM) | Make sure `packages.txt` contains `libgomp1` |
 | App restarts or "Oh no" during training | Memory limit hit: enable cloud mode, select fewer models, or use a smaller upload |
 | Upload rejected | Cloud mode allows up to 400k cells; the Streamlit upload limit is 200 MB |
+| `TypeError: fmin_l_bfgs_b() got an unexpected keyword argument 'disp'` (RF + ARIMA) | statsmodels older than 0.15 with scipy 1.18: keep `statsmodels==0.15.0` from `requirements.txt` |
+| Training seems stuck | Training runs in the background; watch the progress card in step 4, or press **Cancel** to keep the finished models |
 | Wrong scikit-learn version | Keep `scikit-learn==1.5.2`; newer versions break XGBoost/CatBoost inside stacking |
 | Telco dataset missing | It needs a Kaggle login, so it is not bundled; fetch it locally with `scripts/fetch_public_datasets.py telco` and commit the CSV only if the licence allows (CC0: it does) |
 

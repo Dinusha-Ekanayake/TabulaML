@@ -1,60 +1,125 @@
 # TabulaML user guide
 
-Start the app with `streamlit run app.py`. **Light / dark mode:** open the **⋮** menu at the top-right and choose **System**, **Light** or **Dark**. The sidebar shows the six steps and a **Past runs** list. You can always go back, but changing an earlier choice clears the later steps (the app warns you first), so results never mix settings. **Start over** resets everything. The footer shows the app version, the licence and source of the loaded dataset, and a privacy note.
+Start the app with `streamlit run app.py` and open http://localhost:8501. It works on desktops, tablets and phones.
 
-## 1. Problem type
-Choose **Classification** (predict a category, for example a tea lot's market catalogue or churn Yes/No) or **Regression** (predict a number, for example a tea auction price or weekly dengue cases).
+**Around the app:**
+- **Sidebar:** the six steps, **Past runs** and **Start over**. You can always go back. Changing an earlier choice clears the later steps, and the app warns you first.
+- **Theme:** open the **⋮** menu at the top right and choose **System**, **Light** or **Dark**.
+- **Footer:** the version, the licence and source of the loaded dataset, and a privacy note.
+
+---
+
+## 1. What do you want to predict?
+A strip at the top shows the standard workflow the app follows. Pick one of three cards:
+
+| Card | Use it when | Examples |
+|---|---|---|
+| **Classification** | The target is a category | Tea lot catalogue; churn Yes/No. Several yes/no targets at once = multi-label |
+| **Regression** | The target is a number explained by the other columns of the same row | Tea auction price. Several numbers at once = multi-output |
+| **Forecasting (time series)** | You want future values of a series from its own past | Next week's dengue cases |
 
 ## 2. Data
-- **Upload my dataset:** CSV, TXT, XLSX or XLS (up to 200 MB). The delimiter and text encoding are detected automatically. Rows with more values than headers are rejected with a message instead of being silently misaligned.
-- **Use a Sri Lankan sample dataset:** every sample is a genuine, publicly available dataset. Read its card (source, licence, features, limitations), then **Load this sample**.
+- **Upload:**
+  - Formats: CSV, TXT, Excel (choose the sheet), JSON or Parquet, up to 200 MB.
+  - The delimiter and encoding are detected automatically.
+  - JSON can be a list of records, JSON lines, `{"column": [values]}` or `{"data": [records]}`.
+- **Sample:** a public Sri Lankan dataset with its card (source, licence, features, limitations). Forecasting mode lists only time-series samples.
 - **Target column:** checked against the problem type.
-- **How should the model be tested?**
+- **Predict several columns at once** (classification and regression only): turn it on and add the extra targets. They must be of the same kind. One model copy is trained per target, and the other targets are never used as inputs.
+- **How should the model be tested?** (classification and regression)
   - *Random*: rows are independent.
-  - *Grouped*: several rows belong to the same thing, for example one weekly auction sale. A whole group goes to training **or** testing, never both. Choose the group column.
-  - *Time-ordered*: rows happen over time. The model trains on the past and is tested on later rows. Choose the date/order column.
-  - Samples prefill this from their cards: tea is grouped by `sale_id`, dengue is time-ordered by `week_start`. For uploads, the app suggests grouping when an ID-like column repeats.
-- **Number format:** `1,234.5` (decimal point) or `1.234,5` (decimal comma).
-- **Positive class** (binary targets only): the outcome you care about. Precision, recall, F1 and the curves are about this class.
+  - *Grouped*: several rows belong to the same thing (for example one auction sale). A whole group goes to training or to testing, never both.
+  - *Time-ordered*: train on the past, test on later rows.
+- **Number format:** `1,234.5` or `1.234,5`. Spaces and apostrophes as thousands marks (`1 234,5`, `1'234.5`) are understood automatically.
+- **Positive class** (single binary target): the outcome you care about. Precision, recall and F1 are about this class.
+
+### Forecast settings (forecasting only)
+| Setting | Meaning |
+|---|---|
+| Date / time column | Puts the rows in time order |
+| Series column | Only if the file holds several series (for example one per district) |
+| Horizon | How many periods ahead to forecast. Every input is at least this old |
+| Lags | How many past values to use (lags *horizon* … *horizon + lags − 1*) |
+| Seasonal lag | One season back: 52 for weekly, 12 for monthly, 7 for daily (suggested automatically) |
+| Rolling means | Averages of the last N known values |
+| Other columns | *Use their past values* (lagged by the horizon, so they are known in time) or *Do not use* |
+
+The app then checks the series:
+- **Errors** (Next is blocked): duplicate time points in a series, or a series too short for the settings.
+- **Warnings:** irregular gaps, a long horizon, a seasonal lag longer than the first fold.
 
 ## 3. Data quality and preprocessing
-First, the app **holds out the test rows**. Every target-based recommendation is made from the training rows only, so the test set stays a fair, unseen check. The blue box states the validation design and the number of rows in each part.
+The app first **holds out the test rows**. Every target-based recommendation uses the training rows only.
 
-- **Data quality report:** rows, duplicates, a per-column table (type, missing share, unique values, skew, outliers, examples, warnings), missing values, and the target distribution. Problems with the split (for example too few rows of a class for the chosen number of folds) or with number formats appear here.
-- **Leakage review:** columns that are almost perfectly related to the target. For each one, answer *"Will this value be known at the moment you make a prediction?"* They stay excluded until you answer, and step 4 is blocked until all are answered. (Example: in the tea data each `category` belongs to exactly one catalogue, so it would give the answer away.)
+- **Evaluation settings** (expander):
+  - test share, folds and seed;
+  - **Row cap**: train on at most N rows to save time. Time-ordered data keeps the latest rows, grouped data keeps whole groups, otherwise a random sample is used.
+  - Changing any of these re-runs the analysis.
+- **Data quality report:**
+  - rows and duplicates;
+  - a per-column table: type, missing values, unique values, skew, outliers and warnings;
+  - a missing-values chart and the target distribution;
+  - warnings about the split, number formats and small data.
+- **Leakage review:** columns almost perfectly related to the target. Answer *"Will this value be known when you make a prediction?"* for each one. Step 4 is blocked until every column is answered. In forecasting mode there is nothing to review, because every feature comes from the past.
 - **Preprocessing:**
   - *Automatic*: a decision and a reason for every column.
-  - *Custom* → **Missing values (imputation)**: choose how empty cells are filled. Number columns can use median (the automatic choice), mean, most frequent value, constant 0 or KNN. Category columns can use their own "missing" category (the automatic choice) or the most frequent category. You can set one column at a time or apply a method to all number or category columns at once. Only columns with empty cells are listed unless you turn on *Show all columns*.
-  - *Custom* → per-column table: edit include/exclude, type, encoding, scaling, transform and outliers per column. The type you choose is respected by the cleaner too (for example, codes like `00100` stay codes).
-  - Global options: missing-value indicators, spelling-variant merging, rare-category grouping, high-cardinality threshold.
-  - Class imbalance options: none, class weights, random oversampling, SMOTE (keeps category columns valid), undersampling.
-  - Regression target transform: none, `log1p` (offered only when every target value is above -1) or Yeo-Johnson.
+  - *Custom*:
+    - **Missing values (imputation):** for number columns, median, mean, most frequent, constant 0 or KNN; for category columns, an own "missing" category or the most frequent category. Apply a method to all columns of a type, or set each column on its own.
+    - **Global options:** missing-value indicators, merging spelling variants, grouping rare categories, the high-cardinality threshold.
+    - **Class imbalance:** none, class weights, random oversampling, SMOTE or undersampling. These are off when you predict several targets.
+    - **Target transform** (regression): none, `log1p` or Yeo-Johnson.
+    - **Per-column table:** include, type, encoding, scaling, transform and outliers.
 - **Pipeline preview:** the exact steps each model family applies to each column.
-- **Evaluation settings:** test share, folds and seed. Changing them recreates the test set and re-runs the recommendations.
 
 ## 4. Models
-Models are shown as **cards** grouped by family. Each card shows the pipeline type, speed and what the model is best for. Toggle cards on, or use **Recommended set** or **All / None** per group. The bar at the top lists your selection.
+- **Model cards:**
+  - Cards are grouped by family. Each shows its pipeline type, speed and what it is best for.
+  - Use **Recommended set**, **All / None** per group, or toggle single cards.
+  - Forecasting adds **Naive**, **Seasonal naive** and **Hybrid RF + ARIMA**.
+  - Regression includes **Hybrid RF + ANN**.
 - **Voting / Stacking:** choose at least two base models.
-- **Model settings (hyperparameters):** for each selected model:
-  - *Default*: library defaults.
-  - *Manual*: set each value yourself, with an explanation under every setting.
-  - *Auto-tune*: a random search tries N combinations with the same cross-validation, on the training rows only.
-  - Presets: *Fast* (fewer trees), *Balanced* (defaults), *Thorough* (auto-tune).
-- Choose the **primary metric**, read the summary, then press **Train & Predict**. A model whose cross-validation fails in any fold is marked *incomplete* and is never chosen as the best.
+- **Model settings:** Default, Manual (every setting explained) or Auto-tune (a random search with the same CV, on training rows only). Presets: Fast, Balanced, Thorough.
+- **Estimated training time:**
+  - The estimate is a range with a speed level (quick, moderate or long).
+  - It warns about slow choices: stacking, auto-tuning, SVM on large data, KNN imputation, cloud mode.
+  - It names the slowest model and suggests ways to speed up.
+- **Train & Predict:**
+  - Training runs in the background. A progress card shows the model and fold, the elapsed time and the approximate time remaining.
+  - **Cancel** stops after the current fold and keeps every model that already finished.
+  - If you change settings during training, those results are discarded with a message.
+  - A model whose CV fails in a fold is marked *incomplete* and is never chosen as best.
 
 ## 5. Results
-The test set is **locked** at first, so you pick a model without peeking at it.
-- **Leaderboard (CV):** cross-validated mean and spread for every metric, fit times, the parameters used and the imbalance handling actually applied. Download it as CSV, or download the JSON run report.
-- **Comparison:** each dot is one cross-validation fold. Overlapping boxes mean the models are about as good as each other.
-- **Model details (CV):** diagnostics from out-of-fold predictions (each row predicted by a model that did not see it).
-  - Classification: confusion matrix, ROC and precision-recall curves for the positive class.
-  - Binary tasks also get a **decision threshold** slider (with "Best F1") and a calibration plot.
+- **Leaderboard (CV):**
+  - mean and spread for every metric, fit times, parameters and the imbalance handling used;
+  - CSV and JSON downloads.
+- **Comparison:** each dot is one CV fold. Overlapping boxes mean similar models.
+- **Random Forest dashboard** (when RF was trained):
+  - KPI cards: CV score, spread, trees, average depth, fit time.
+  - A fold-by-fold chart against the boosters.
+  - A **head-to-head** table: RF wins, losses and ties on the same folds.
+  - The forest's built-in feature importance.
+- **Model details (CV):** out-of-fold diagnostics, where each row is predicted by a model that never saw it.
+  - Classification: confusion matrix, ROC and PR curves, a decision threshold slider (with Best F1), and calibration.
   - Regression: predicted vs actual, and residuals.
-  - The settings expander shows the parameters, the auto-tuning history and the imbalance handling.
-- **Final test (held out):** press **Reveal final test results** once you have chosen. It shows the test scores, the Random Forest vs gradient boosting sentence, and permutation feature importance on the test set.
+  - With several targets, choose the target to inspect.
+- **Final test (held out):** press **Reveal final test results** once you have chosen. You then see:
+  - the test scores and the RF vs boosting sentence;
+  - a per-target table (several targets);
+  - permutation importance;
+  - in forecasting mode, the test period chart and whether the model beats the naive baseline.
 
 ## 6. Predict
-Choose a model (only fully validated ones are listed). A threshold chosen in step 5 is applied.
-- **Single record:** a form filled with typical values. Classification shows class probabilities.
-- **Batch file:** upload a CSV or Excel file. Before scoring, a quality check lists values that could not be parsed, values outside the training range and categories never seen in training. Download the predictions.
-- **Download model:** click **Prepare model files**, then download the **.joblib** (compressed, the usual scikit-learn format) or the **.pkl** (standard Python pickle) file. Both contain the full pipeline, its parameters and the threshold, and both load with `load_bundle(path)`. Only load files you created yourself.
+Only fully validated models are listed. A threshold chosen in step 5 is applied.
+- **Single record:** a form filled with typical values. With several targets, you get one card per target.
+- **Batch file:** the file is quality-checked first (unparseable values, values outside the training range, new categories). Then download the predictions, with one `prediction_<target>` column per target.
+- **Forecast next periods** (forecasting):
+  - The chosen model is refitted on all history, then forecasts the next *horizon* periods for every series.
+  - You can use the training data or upload a newer history file.
+  - You get a chart and a CSV download.
+- **Download model:** **Prepare model files**, then **.joblib** (compressed) or **.pkl** (standard pickle). Load either with `load_bundle(path)`. Only load files you created yourself.
+
+## Tips
+- Start with the **Recommended set**. Add stacking or auto-tuning only when you need the last bit of accuracy.
+- On a slow machine or on Streamlit Cloud, use the row cap and fewer folds.
+- In forecasting, always compare with the **naive** baseline. A model that cannot beat "same as last week" has learned nothing useful.

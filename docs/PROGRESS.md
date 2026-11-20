@@ -39,6 +39,16 @@
 | P19 | Benchmark + report | done | app engine with each dataset's validation design; simple fold-win comparison; ablation; report rewritten |
 | P20 | Optional extras | not started | SHAP, learning curves, memory guard, model cards export, Docker |
 
+## Extensions (docs/05_EXTENSION_PLAN.md)
+| Phase | Title | Status | Notes |
+|---|---|---|---|
+| - | Imputation per column | done | type-aware options, bulk apply, validated (no silently ignored choices) |
+| E1 | Training time, row cap, background training, cancel | done | estimate range + warnings; fold-level progress; cancel keeps finished models |
+| E2 | Several targets | done | MultiOutput wrappers; averaged + exact-match + Hamming metrics; per-target tables and predictions |
+| E3 | Forecasting | done | past-only lag/rolling/calendar features; naive + seasonal naive; RF + ARIMA hybrid; future forecasts |
+| E4 | Input add-ons | done | JSON / Parquet; apostrophe thousands; small-data warnings |
+| E5 | RF dashboard, card design, responsive, end-to-end checks | done | head-to-head fold counts; built-in importance; mobile layout; Playwright walk-through |
+
 ## Open decisions / blockers
 - [ ] Fetch the real telco dataset (needs a free Kaggle account): set `KAGGLE_USERNAME`/`KAGGLE_KEY` or download the zip and pass `--kaggle-dir`.
 
@@ -57,6 +67,7 @@
 - Encoding: a PowerShell 5.1 rewrite corrupted the euro/pound characters in the currency regex (commit 184e2ce) -> now ASCII `\u` escapes plus a test. Do not rewrite text files with PowerShell `Get-Content`/`Set-Content`.
 
 ## Contract changes log
+- E1-E4: see `docs/02_ARCHITECTURE.md §4.3` (ForecastConfig; `max_rows`, `extra_targets`, `forecast` on PreprocessingConfig; `per_target`, `cancelled`, `target_labels`, `test_order`; `train_models(should_stop=)`; `list_models(forecasting=)`; `Predictor(target_labels=)`).
 - v2: `ValidationScheme`; `PreprocessingConfig` gained `validation`, `group_column`, `order_column`, `positive_class`, `decimal`, `thousands`, `model_params`, `tuning`; `ImbalanceStrategy.RANDOM_OVERSAMPLE`; `ModelResult` gained `params`, `n_failed_folds`, `effective_imbalance`, `oof_pred/oof_proba/oof_mask`, `tuning_history`, status `incomplete`; `TrainingRun` gained `y_dev`, `positive_index`.
 - v2: `training/splits.py` (`make_holdout`, `make_cv`, `describe`), `training/tuning.py` (`tune`), `training/samplers.py` (`CategoryAwareSMOTE`), `models/params.py` (`ParamSpec`, `validate_params`, `search_space`), `workflow.py` (`Roles`, `auto_configure`, `suggest_validation`).
 - v2: `trainer.prepare()` returns `Prepared` (with original row `index`); duplicates are judged on whole rows so the split never depends on feature selection. `compute_metrics/scoring_map/permutation_importance_df` take `positive`. `DataCleaner(column_types, decimal, thousands)` + `parse_report()`. `Predictor(threshold, positive_index)` + `quality_report()`. Bundles store `params`, `threshold`, `positive_index`. `DatasetCard` gained `source_url`, `validation`, `group_column`, `order_column`.

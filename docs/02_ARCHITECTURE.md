@@ -268,7 +268,49 @@ def save_bundle(path, result: ModelResult, run: TrainingRun, schema) -> Path
 def load_bundle(path) -> Predictor
 ```
 
-Model keys (used everywhere): `logreg, ridge, lasso, elasticnet, linreg, dt, rf, extratrees, bagging, adaboost, gb, histgb, xgb, lgbm, catboost, svm, knn, mlp, voting, stacking, hybrid_rf_ann`.
+### 4.3 Extension contracts (E1–E4, see `docs/05_EXTENSION_PLAN.md`)
+
+```python
+# core/types.py — new fields (all optional, so older code paths are unchanged)
+@dataclass(frozen=True)
+class ForecastConfig:
+    horizon: int = 1; n_lags: int = 3; seasonal_lag: int | None = None
+    windows: tuple[int, ...] = (4,); series_column: str | None = None; exog: str = "lagged"  # lagged|none
+    def lags(self) -> tuple[int, ...]          # horizon .. horizon+n_lags-1 (+ seasonal lag >= horizon)
+PreprocessingConfig += max_rows: int | None = None              # row cap applied before the split
+                       extra_targets: tuple[str, ...] = ()      # several targets
+                       forecast: ForecastConfig | None = None   # forecasting mode (regression)
+                       targets -> tuple[str, ...]; is_multi_output -> bool   (properties)
+ModelResult        += per_target: dict[str, dict[str, float]]   # test metrics per target
+TrainingRun        += cancelled: bool; target_labels: dict[str, tuple[str, ...]]; test_order: Any
+                       is_multi_output -> bool
+LOWER_IS_BETTER    += "hamming_loss"
+
+# training/trainer.py
+def train_models(..., progress: Callable[[str, int, int], None] | None = None,   # fold-level units
+                 should_stop: Callable[[], bool] | None = None) -> TrainingRun   # cancel between folds/models
+class TrainingCancelled(Exception)                                              # cancelled before any model finished
+# training/jobs.py      class TrainingJob(train=train_models, **kwargs): start(); cancel(); snapshot() -> JobSnapshot; wait()
+# training/estimate.py  def estimate_training(n_rows, n_features, model_keys, cv_folds, tuning, ensemble_bases,
+#                                             knn_imputation, n_targets) -> TrainingEstimate
+# evaluation/multi_metrics.py  multi_output_metrics, multi_scoring_map, per_target_metrics, subset_accuracy, hamming_loss
+# forecasting/features.py      add_forecast_features(df, config, drop_incomplete=True); generated_columns; lag_name;
+#                              infer_step; suggest_seasonal_lag
+# forecasting/checks.py        forecast_issues(df, target, order_column, fc, cv_folds) -> list[ValidationIssue]
+# forecasting/models.py        NaiveForecaster(column); HybridRFARIMARegressor(p, d, q, n_estimators, max_depth, random_state)
+# forecasting/future.py        forecast_future(pipeline, history, config, feature_columns, refit=True) -> (table, model)
+# models/registry.py           ModelSpec += forecast_only: bool; list_models(problem_type, forecasting=False)
+# inference/predictor.py       Predictor(..., target_labels=None)  -> prediction_<target> columns with several targets
+# data/loader.py               read_tabular_file also reads .json / .jsonl / .parquet
+# workflow.py                  Roles += max_rows, extra_targets, forecast
+# training/prepare.py          Prepared, prepare, prepare_data (re-exported by training/trainer.py)
+# training/progress.py         Progress, StopCheck, TrainingCancelled (re-exported by trainer)
+# models/spec.py, models/composite_specs.py   ModelSpec and the ensemble / hybrid / forecasting specs
+#                              (registry.py re-exports ModelSpec; MODEL_REGISTRY includes them all)
+# evaluation/rf_insights.py    head_to_head, verdict, forest_summary, impurity_importance (RF dashboard)
+```
+
+Model keys (used everywhere): `logreg, ridge, lasso, elasticnet, linreg, dt, rf, extratrees, bagging, adaboost, gb, histgb, xgb, lgbm, catboost, svm, knn, mlp, voting, stacking, hybrid_rf_ann`, plus forecasting-only `naive, seasonal_naive, rf_arima`.
 
 ## 5. Preprocessing decision rules (recommender)
 

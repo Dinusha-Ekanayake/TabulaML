@@ -116,3 +116,22 @@ def test_model_cards_and_selection_bar():
     assert any("5 selected" in str(m.value) for m in at.markdown)
     at = _click(at, "none_Boosting")
     assert not at.toggle(key="m_xgb").value
+
+
+def test_custom_mode_lets_user_choose_imputation_per_column():
+    at = _to_step3("regression", "dengue")
+    at.radio(key="pp_mode").set_value("Custom")
+    at = at.run(timeout=TIMEOUT)
+    at.toggle(key="imp_show_all").set_value(True)
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    box = next(
+        s for s in at.selectbox if str(s.key or "").startswith("imp_") and "bulk" not in s.key
+    )
+    column = box.key.removeprefix("imp_")
+    box.set_value("mean")
+    at = at.run(timeout=TIMEOUT)
+    _no_errors(at)
+    config = at.session_state["tml_state"].config
+    chosen = next(c for c in config.columns if c.name == column)
+    assert chosen.impute == "mean" and config.mode == "custom"

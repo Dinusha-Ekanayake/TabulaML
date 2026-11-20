@@ -24,7 +24,8 @@ First, the app **holds out the test rows**. Every target-based recommendation is
 - **Leakage review:** columns that are almost perfectly related to the target. For each one, answer *"Will this value be known at the moment you make a prediction?"* They stay excluded until you answer, and step 4 is blocked until all are answered. (Example: in the tea data each `category` belongs to exactly one catalogue, so it would give the answer away.)
 - **Preprocessing:**
   - *Automatic*: a decision and a reason for every column.
-  - *Custom*: edit include/exclude, type, imputation, encoding, scaling, transform and outliers per column. The type you choose is respected by the cleaner too (for example, codes like `00100` stay codes).
+  - *Custom* → **Missing values (imputation)**: choose how empty cells are filled. Number columns can use median (the automatic choice), mean, most frequent value, constant 0 or KNN. Category columns can use their own "missing" category (the automatic choice) or the most frequent category. You can set one column at a time or apply a method to all number or category columns at once. Only columns with empty cells are listed unless you turn on *Show all columns*.
+  - *Custom* → per-column table: edit include/exclude, type, encoding, scaling, transform and outliers per column. The type you choose is respected by the cleaner too (for example, codes like `00100` stay codes).
   - Global options: missing-value indicators, spelling-variant merging, rare-category grouping, high-cardinality threshold.
   - Class imbalance options: none, class weights, random oversampling, SMOTE (keeps category columns valid), undersampling.
   - Regression target transform: none, `log1p` (offered only when every target value is above -1) or Yeo-Johnson.

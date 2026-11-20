@@ -15,6 +15,7 @@ from tabulaml.training.splits import describe
 from tabulaml.ui.components import issues_view, nav_buttons
 from tabulaml.ui.helpers import OPTIONS, config_to_editor, editor_to_config
 from tabulaml.ui.state import AppState, get_state, reset_from, set_state
+from tabulaml.ui.steps.s3_missing import missing_values_section
 from tabulaml.workflow import Roles, auto_configure
 
 IMBALANCE_HELP = {
@@ -191,21 +192,29 @@ def _preprocessing_tab(state: AppState) -> None:
             + ", ".join(f"`{c}`" for c in state.card.recommended_exclusions)
         )
     st.markdown("\n".join(f"- {line}" for line in state.config.explanations))
-    editor = config_to_editor(state.config)
     if mode == "Automatic":
-        st.dataframe(editor, hide_index=True, width="stretch")
+        st.dataframe(config_to_editor(state.config), hide_index=True, width="stretch")
+        st.caption(
+            "To choose the imputation method, encoding, scaling and more per column, "
+            "switch the mode to **Custom**."
+        )
         return
     _global_controls(state)
+    missing_values_section(get_state())
+    st.markdown("##### Per-column settings")
     column_config = {
         k: st.column_config.SelectboxColumn(k, options=v, required=True) for k, v in OPTIONS.items()
     }
     column_config["include"] = st.column_config.CheckboxColumn("include")
+    column_config["impute"] = st.column_config.TextColumn(
+        "impute", help="Set in Missing values (imputation) above."
+    )
     edited = st.data_editor(
-        editor,
+        config_to_editor(get_state().config),
         hide_index=True,
         width="stretch",
         key="pp_editor",
-        disabled=["column", "reason"],
+        disabled=["column", "reason", "impute"],
         column_config=column_config,
     )
     new = editor_to_config(get_state().config, edited)
